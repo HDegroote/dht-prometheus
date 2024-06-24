@@ -13,7 +13,7 @@ test('put alias + lookup happy flow', async t => {
   await dhtPromClient.ready()
   await bridge.ready()
 
-  const baseUrl = await bridge.server.listen()
+  const baseUrl = await bridge.server.listen({ address: '127.0.0.1', port: 0 })
 
   bridge.putAlias('dummy', dhtPromClient.publicKey)
 
