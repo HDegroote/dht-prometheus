@@ -1,0 +1,29 @@
+{
+  "name": "dht-prometheus",
+  "version": "0.0.0",
+  "description": "Bridge to scrape Prometheus metrics exposed over hyperdht",
+  "main": "index.js",
+  "scripts": {
+    "test": "standard"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HDegroote/dht-prometheus.git"
+  },
+  "keywords": [
+    "Prometheus",
+    "dht",
+    "hyperdht",
+    "peer-to-peer",
+    "p2p"
+  ],
+  "author": "H. Degroote",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/HDegroote/dht-prometheus/issues"
+  },
+  "homepage": "https://github.com/HDegroote/dht-prometheus#readme",
+  "devDependencies": {
+    "standard": "^17.1.0"
+  }
+}
