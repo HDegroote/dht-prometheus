@@ -24,6 +24,17 @@
   },
   "homepage": "https://github.com/HDegroote/dht-prometheus#readme",
   "devDependencies": {
+    "axios": "^1.7.2",
+    "brittle": "^3.5.2",
+    "hyperdht": "^6.15.1",
+    "prom-client": "^15.1.2",
     "standard": "^17.1.0"
+  },
+  "dependencies": {
+    "dht-prom-client": "^0.0.1-alpha.1",
+    "fastify": "^4.28.0",
+    "protomux-rpc": "^1.5.2",
+    "ready-resource": "^1.1.1",
+    "safety-catch": "^1.0.2"
   }
 }
