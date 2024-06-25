@@ -63,7 +63,8 @@ class PrometheusDhtBridge extends ReadyResource {
     if (res.success) {
       reply.send(res.metrics)
     } else {
-      // TODO:
+      reply.code(502)
+      reply.send(`Upstream error: ${res.errorMessage}`)
     }
   }
 }

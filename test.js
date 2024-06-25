@@ -45,6 +45,40 @@ test('404 on unknown alias', async t => {
   )
 })
 
+test('502 with uid if upstream returns success: false', async t => {
+  const { bridge, dhtPromClient } = await setup(t)
+
+  new promClient.Gauge({ // eslint-disable-line no-new
+    name: 'broken_metric',
+    help: 'A metric which throws on collecting it',
+    collect () {
+      throw new Error('I break stuff')
+    }
+  })
+
+  let reqUid = null
+  dhtPromClient.on('metrics-request', ({ uid }) => {
+    reqUid = uid
+  })
+
+  await dhtPromClient.ready()
+  await bridge.ready()
+
+  const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
+  bridge.putAlias('dummy', dhtPromClient.publicKey)
+
+  const res = await axios.get(
+    `${baseUrl}/scrape/dummy/metrics`,
+    { validateStatus: null }
+  )
+  t.is(res.status, 502, 'correct status')
+  t.is(
+    res.data.includes(reqUid),
+    true,
+    'uid included in error message'
+  )
+})
+
 test('No new alias if adding same key', async t => {
   const { bridge } = await setup(t)
   const key = 'a'.repeat(64)
