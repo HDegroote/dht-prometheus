@@ -1,4 +1,5 @@
 const { once } = require('events')
+const crypto = require('crypto')
 const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const RPC = require('protomux-rpc')
@@ -15,7 +16,11 @@ class ScraperClient extends ReadyResource {
 
     this.rpc = null
     this.socket = null
+    this._currentConnUid = null
     this.swarm.on('connection', (socket, peerInfo) => {
+      const connUid = crypto.randomUUID() // TODO: check if needed
+      this._currentConnUid = connUid
+
       if (!b4a.equals(peerInfo.publicKey, this.key)) return // Not our connection
 
       this.emit('connection', peerInfo)
@@ -23,15 +28,17 @@ class ScraperClient extends ReadyResource {
 
       this.socket.on('error', safetyCatch)
       this.socket.on('close', () => {
-        this.socket = null
-        this.rpc = null
+        if (connUid === this._currentConnUid) {
+          this.socket = null
+          this.rpc = null
+          this.rpcReady = null
+          this._currentConnUid = null
+        }
       })
 
       this.rpc = new RPC(this.socket, { protocol: 'prometheus-metrics' })
       this.rpcReady = once(this.rpc, 'open')
-      this.rpcReady.catch(e => console.error(e))
-
-      console.log('connection set')
+      this.rpcReady.catch(safetyCatch)
     })
 
     this.swarm.joinPeer(this.key)
@@ -45,7 +52,6 @@ class ScraperClient extends ReadyResource {
   }
 
   async lookup () {
-    // console.log('lookup', this.rpc)
     if (!this.rpc) throw new Error('Not connected')
 
     await this.rpcReady
