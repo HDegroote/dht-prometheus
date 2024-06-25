@@ -31,9 +31,11 @@
     "standard": "^17.1.0"
   },
   "dependencies": {
+    "debounceify": "^1.1.0",
     "dht-prom-client": "^0.0.1-alpha.1",
     "fastify": "^4.28.0",
     "hypercore-id-encoding": "^1.3.0",
+    "hyperswarm": "^4.7.15",
     "protomux-rpc": "^1.5.2",
     "ready-resource": "^1.1.1",
     "safety-catch": "^1.0.2"

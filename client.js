@@ -3,34 +3,41 @@ const ReadyResource = require('ready-resource')
 const safetyCatch = require('safety-catch')
 const RPC = require('protomux-rpc')
 const { MetricsReplyEnc } = require('dht-prom-client/lib/encodings')
+const idEnc = require('hypercore-id-encoding')
+const b4a = require('b4a')
 
 class ScraperClient extends ReadyResource {
-  constructor (dht, promClientPublicKey) {
+  constructor (swarm, promClientPublicKey) {
     super()
 
-    this.dht = dht
-    this.key = promClientPublicKey
+    this.swarm = swarm
+    this.key = idEnc.decode(idEnc.normalize(promClientPublicKey))
+
     this.rpc = null
     this.socket = null
+    this.swarm.on('connection', (socket, peerInfo) => {
+      if (!b4a.equals(peerInfo.publicKey, this.key)) return // Not our connection
+
+      this.emit('connection', peerInfo)
+      this.socket = socket
+
+      this.socket.on('error', safetyCatch)
+      this.socket.on('close', () => {
+        this.socket = null
+        this.rpc = null
+      })
+
+      this.rpc = new RPC(this.socket, { protocol: 'prometheus-metrics' })
+      this.rpcReady = once(this.rpc, 'open')
+      this.rpcReady.catch(e => console.error(e))
+
+      console.log('connection set')
+    })
+
+    this.swarm.joinPeer(this.key)
   }
 
-  async _open () {
-    // TODO: auto reconnect
-    // TODO: retry on failure
-    // TODO: define a keepAlive
-    // TODO: handle error paths (peer not available etc)
-    this.socket = this.dht.connect(this.key)
-    this.socket.on('error', safetyCatch)
-
-    await this.socket.opened
-
-    if (!this.socket.connected) {
-      throw new Error('Could not open socket')
-    }
-
-    this.rpc = new RPC(this.socket, { protocol: 'prometheus-metrics' })
-    await once(this.rpc, 'open')
-  }
+  _open () { }
 
   async _close () {
     this.rpc?.destroy()
@@ -38,7 +45,10 @@ class ScraperClient extends ReadyResource {
   }
 
   async lookup () {
-    if (!this.opened) await this.ready()
+    // console.log('lookup', this.rpc)
+    if (!this.rpc) throw new Error('Not connected')
+
+    await this.rpcReady
 
     const res = await this.rpc.request(
       'metrics',

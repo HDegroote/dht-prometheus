@@ -16,8 +16,12 @@ test('put alias + lookup happy flow', async t => {
   const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
 
   bridge.putAlias('dummy', dhtPromClient.publicKey)
+  await bridge.swarm.flush() // Avoid race condition
 
-  const res = await axios.get(`${baseUrl}/scrape/dummy/metrics`)
+  const res = await axios.get(
+    `${baseUrl}/scrape/dummy/metrics`,
+    { validateStatus: null }
+  )
   t.is(res.status, 200, 'correct status')
   t.is(
     res.data.includes('process_cpu_user_seconds_total'),
@@ -66,6 +70,7 @@ test('502 with uid if upstream returns success: false', async t => {
 
   const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
   bridge.putAlias('dummy', dhtPromClient.publicKey)
+  await bridge.swarm.flush() // Avoid race condition
 
   const res = await axios.get(
     `${baseUrl}/scrape/dummy/metrics`,
@@ -75,6 +80,29 @@ test('502 with uid if upstream returns success: false', async t => {
   t.is(
     res.data.includes(reqUid),
     true,
+    'uid included in error message'
+  )
+})
+
+test('502 if upstream unavailable', async t => {
+  const { bridge, dhtPromClient } = await setup(t)
+
+  await dhtPromClient.ready()
+  await bridge.ready()
+
+  const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
+  bridge.putAlias('dummy', dhtPromClient.publicKey)
+
+  await dhtPromClient.close()
+
+  const res = await axios.get(
+    `${baseUrl}/scrape/dummy/metrics`,
+    { validateStatus: null }
+  )
+  t.is(res.status, 502, 'correct status')
+  t.is(
+    res.data,
+    'Upstream unavailable',
     'uid included in error message'
   )
 })
