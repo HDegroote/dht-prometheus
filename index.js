@@ -1,5 +1,8 @@
 const ScraperClient = require('./client')
 const ReadyResource = require('ready-resource')
+const idEnc = require('hypercore-id-encoding')
+const b4a = require('b4a')
+const safetyCatch = require('safety-catch')
 
 class PrometheusDhtBridge extends ReadyResource {
   constructor (dht, server) {
@@ -21,8 +24,24 @@ class PrometheusDhtBridge extends ReadyResource {
     return this.dht.defaultKeyPair.publicKey
   }
 
+  async _close () {
+    await Promise.all([
+      [...this.aliases.values()].map(a => a.close())
+    ])
+  }
+
   putAlias (alias, targetPubKey) {
-    // TODO: only reset if new or not the same key
+    targetPubKey = idEnc.decode(idEnc.normalize(targetPubKey))
+    const current = this.aliases.get(alias)
+
+    if (current) {
+      if (b4a.equals(current.key, targetPubKey)) {
+        return // Idempotent
+      }
+
+      current.close().catch(safetyCatch)
+    }
+
     const scrapeClient = new ScraperClient(this.dht, targetPubKey)
     this.aliases.set(alias, scrapeClient)
   }

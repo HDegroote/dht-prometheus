@@ -26,6 +26,25 @@ test('put alias + lookup happy flow', async t => {
   )
 })
 
+test('No new alias if adding same key', async t => {
+  const { bridge } = await setup(t)
+  const key = 'a'.repeat(64)
+  const key2 = 'b'.repeat(64)
+
+  await bridge.ready()
+  bridge.putAlias('dummy', key)
+  const clientA = bridge.aliases.get('dummy')
+
+  t.is(clientA != null, true, 'sanity check')
+  bridge.putAlias('dummy', key)
+  t.is(clientA, bridge.aliases.get('dummy'), 'no new client')
+
+  t.is(clientA.closing == null, true, 'sanity check')
+  bridge.putAlias('dummy', key2)
+  t.not(clientA, bridge.aliases.get('dummy'), 'sanity check')
+  t.is(clientA.closing != null, true, 'lifecycle ok')
+})
+
 async function setup (t) {
   promClient.collectDefaultMetrics() // So we have something to scrape
   t.teardown(() => promClient.register.clear())
@@ -34,7 +53,7 @@ async function setup (t) {
   const bootstrap = testnet.bootstrap
 
   const dht = new HyperDHT({ bootstrap })
-  const server = fastify() // TODO: no logs
+  const server = fastify({ logger: false })
   const bridge = new PrometheusDhtBridge(dht, server, { address: '127.0.0.1', port: 30000 })
   const scraperPubKey = bridge.publicKey
 
@@ -43,6 +62,7 @@ async function setup (t) {
 
   t.teardown(async () => {
     await server.close()
+    await bridge.close()
     await dhtPromClient.close()
     await dht.destroy()
     await testnet.destroy()

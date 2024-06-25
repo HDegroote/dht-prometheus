@@ -33,8 +33,8 @@ class ScraperClient extends ReadyResource {
   }
 
   async _close () {
-    this.rpc.destroy()
-    this.socket.destroy()
+    this.rpc?.destroy()
+    this.socket?.destroy()
   }
 
   async lookup () {
