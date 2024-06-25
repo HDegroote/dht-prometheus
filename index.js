@@ -52,8 +52,9 @@ class PrometheusDhtBridge extends ReadyResource {
     const scrapeClient = this.aliases.get(alias)
 
     if (!scrapeClient) {
-      // TODO: 404 code
-      throw new Error('Unkown alias')
+      reply.code(404)
+      reply.send('Unknown alias')
+      return
     }
 
     if (!scrapeClient.opened) await scrapeClient.ready()
