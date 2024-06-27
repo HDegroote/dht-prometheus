@@ -16,13 +16,94 @@ test('put alias + lookup happy flow', async t => {
   const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
 
   bridge.putAlias('dummy', dhtPromClient.publicKey)
+  await bridge.swarm.flush() // Avoid race condition
 
-  const res = await axios.get(`${baseUrl}/scrape/dummy/metrics`)
+  const res = await axios.get(
+    `${baseUrl}/scrape/dummy/metrics`,
+    { validateStatus: null }
+  )
   t.is(res.status, 200, 'correct status')
   t.is(
     res.data.includes('process_cpu_user_seconds_total'),
     true,
     'Successfully scraped metrics'
+  )
+})
+
+test('404 on unknown alias', async t => {
+  const { bridge } = await setup(t)
+
+  await bridge.ready()
+
+  const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
+
+  const res = await axios.get(
+    `${baseUrl}/scrape/nothinghere/metrics`,
+    { validateStatus: null }
+  )
+  t.is(res.status, 404, 'correct status')
+  t.is(
+    res.data.includes('Unknown alias'),
+    true,
+    'Sensible err msg'
+  )
+})
+
+test('502 with uid if upstream returns success: false', async t => {
+  const { bridge, dhtPromClient } = await setup(t)
+
+  new promClient.Gauge({ // eslint-disable-line no-new
+    name: 'broken_metric',
+    help: 'A metric which throws on collecting it',
+    collect () {
+      throw new Error('I break stuff')
+    }
+  })
+
+  let reqUid = null
+  dhtPromClient.on('metrics-request', ({ uid }) => {
+    reqUid = uid
+  })
+
+  await dhtPromClient.ready()
+  await bridge.ready()
+
+  const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
+  bridge.putAlias('dummy', dhtPromClient.publicKey)
+  await bridge.swarm.flush() // Avoid race condition
+
+  const res = await axios.get(
+    `${baseUrl}/scrape/dummy/metrics`,
+    { validateStatus: null }
+  )
+  t.is(res.status, 502, 'correct status')
+  t.is(
+    res.data.includes(reqUid),
+    true,
+    'uid included in error message'
+  )
+})
+
+test('502 if upstream unavailable', async t => {
+  const { bridge, dhtPromClient } = await setup(t)
+
+  await dhtPromClient.ready()
+  await bridge.ready()
+
+  const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
+  bridge.putAlias('dummy', dhtPromClient.publicKey)
+
+  await dhtPromClient.close()
+
+  const res = await axios.get(
+    `${baseUrl}/scrape/dummy/metrics`,
+    { validateStatus: null }
+  )
+  t.is(res.status, 502, 'correct status')
+  t.is(
+    res.data,
+    'Upstream unavailable',
+    'uid included in error message'
   )
 })
 

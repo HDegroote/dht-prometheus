@@ -3,12 +3,13 @@ const ReadyResource = require('ready-resource')
 const idEnc = require('hypercore-id-encoding')
 const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
+const Hyperswarm = require('hyperswarm')
 
 class PrometheusDhtBridge extends ReadyResource {
   constructor (dht, server) {
     super()
 
-    this.dht = dht
+    this.swarm = new Hyperswarm({ dht })
 
     this.server = server
     this.server.get(
@@ -20,14 +21,20 @@ class PrometheusDhtBridge extends ReadyResource {
     this.aliases = new Map() // alias->scrapeClient
   }
 
+  get dht () {
+    return this.swarm.dht
+  }
+
   get publicKey () {
-    return this.dht.defaultKeyPair.publicKey
+    return this.swarm.keyPair.publicKey
   }
 
   async _close () {
     await Promise.all([
       [...this.aliases.values()].map(a => a.close())
     ])
+
+    await this.swarm.destroy()
   }
 
   putAlias (alias, targetPubKey) {
@@ -35,14 +42,14 @@ class PrometheusDhtBridge extends ReadyResource {
     const current = this.aliases.get(alias)
 
     if (current) {
-      if (b4a.equals(current.key, targetPubKey)) {
+      if (b4a.equals(current.targetKey, targetPubKey)) {
         return // Idempotent
       }
 
       current.close().catch(safetyCatch)
     }
 
-    const scrapeClient = new ScraperClient(this.dht, targetPubKey)
+    const scrapeClient = new ScraperClient(this.swarm, targetPubKey)
     this.aliases.set(alias, scrapeClient)
   }
 
@@ -52,17 +59,27 @@ class PrometheusDhtBridge extends ReadyResource {
     const scrapeClient = this.aliases.get(alias)
 
     if (!scrapeClient) {
-      // TODO: 404 code
-      throw new Error('Unkown alias')
+      reply.code(404)
+      reply.send('Unknown alias')
+      return
     }
 
     if (!scrapeClient.opened) await scrapeClient.ready()
 
-    const res = await scrapeClient.lookup()
+    let res
+    try {
+      res = await scrapeClient.lookup()
+    } catch (e) {
+      this.emit('upstream-error', e)
+      reply.code(502)
+      reply.send('Upstream unavailable')
+    }
+
     if (res.success) {
       reply.send(res.metrics)
     } else {
-      // TODO:
+      reply.code(502)
+      reply.send(`Upstream error: ${res.errorMessage}`)
     }
   }
 }
