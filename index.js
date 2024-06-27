@@ -4,12 +4,18 @@ const idEnc = require('hypercore-id-encoding')
 const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
 const Hyperswarm = require('hyperswarm')
+const HyperDht = require('hyperdht')
 
 class PrometheusDhtBridge extends ReadyResource {
   constructor (dht, server) {
     super()
 
-    this.swarm = new Hyperswarm({ dht })
+    const keyPair = HyperDht.keyPair()
+    this.swarm = new Hyperswarm({
+      dht,
+      keyPair
+      // firewall: this._firewall.bind(this)
+    })
 
     this.server = server
     this.server.get(
@@ -43,7 +49,8 @@ class PrometheusDhtBridge extends ReadyResource {
 
     if (current) {
       if (b4a.equals(current.targetKey, targetPubKey)) {
-        return // Idempotent
+        const updated = false // Idempotent
+        return updated
       }
 
       current.close().catch(safetyCatch)
@@ -51,6 +58,9 @@ class PrometheusDhtBridge extends ReadyResource {
 
     const scrapeClient = new ScraperClient(this.swarm, targetPubKey)
     this.aliases.set(alias, scrapeClient)
+
+    const updated = true
+    return updated
   }
 
   async _handleGet (req, reply) {
@@ -70,6 +80,7 @@ class PrometheusDhtBridge extends ReadyResource {
     try {
       res = await scrapeClient.lookup()
     } catch (e) {
+      console.error(e)
       this.emit('upstream-error', e)
       reply.code(502)
       reply.send('Upstream unavailable')
@@ -82,6 +93,21 @@ class PrometheusDhtBridge extends ReadyResource {
       reply.send(`Upstream error: ${res.errorMessage}`)
     }
   }
+
+  /* _firewall (remotePublicKey, payload, address) {
+    console.log('fire?')
+    const knowsPrivateKey = b4a.equals(
+      remotePublicKey,
+      this.swarm.keyPair.publicKey
+    )
+
+    if (!knowsPrivateKey) {
+      console.log('blocking it', remotePublicKey, 'me', this.swarm.keyPair.publicKey)
+      this.emit('firewall-block', { remotePublicKey, payload, address })
+    }
+
+    return !knowsPrivateKey
+  } */
 }
 
 module.exports = PrometheusDhtBridge

@@ -6,6 +6,9 @@ const createTestnet = require('hyperdht/testnet')
 const HyperDHT = require('hyperdht')
 const fastify = require('fastify')
 const axios = require('axios')
+const AliasRpcClient = require('./lib/alias-rpc-client')
+const AliasRpcServer = require('./lib/alias-rpc')
+const hypCrypto = require('hypercore-crypto')
 
 test('put alias + lookup happy flow', async t => {
   const { bridge, dhtPromClient } = await setup(t)
@@ -124,6 +127,45 @@ test('No new alias if adding same key', async t => {
   bridge.putAlias('dummy', key2)
   t.not(clientA, bridge.aliases.get('dummy'), 'sanity check')
   t.is(clientA.closing != null, true, 'lifecycle ok')
+})
+
+test('a client which registers itself gets scraped', async t => {
+  const { bridge, dhtPromClient, bootstrap } = await setup(t)
+
+  await dhtPromClient.ready()
+  await bridge.ready()
+  // console.log('setting to', bridge.swarm.keyPair.publicKey)
+  // dhtPromClient.scraperPublicKey = bridge.swarm.keyPair.publicKey
+
+  const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
+
+  const secret = hypCrypto.randomBytes(32)
+
+  const aliasServer = new AliasRpcServer(bridge.swarm, secret, bridge.putAlias.bind(bridge))
+  aliasServer.on('alias-request', ({ uid, remotePublicKey, alias, targetPubKey }) => {
+    console.log('received req for alias', alias, 'key', targetPubKey)
+  })
+  aliasServer.on('register-error', ({ error, uid }) => {
+    console.log('error', error)
+  })
+  await aliasServer.ready()
+
+  const aliasClient = new AliasRpcClient(dhtPromClient.dht.defaultKeyPair.publicKey, bridge.swarm.keyPair.publicKey, secret, { bootstrap })
+  await aliasClient.registerAlias()
+
+  await bridge.swarm.flush() // To avoid race conditions
+  const res = await axios.get(
+    `${baseUrl}/scrape/dummy/metrics`,
+    { validateStatus: null }
+  )
+  t.is(res.status, 200, 'correct status')
+  t.is(
+    res.data.includes('process_cpu_user_seconds_total'),
+    true,
+    'Successfully scraped metrics'
+  )
+
+  await aliasServer.close()
 })
 
 async function setup (t) {
