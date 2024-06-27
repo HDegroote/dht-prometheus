@@ -131,20 +131,12 @@ class ScraperClient extends ReadyResource {
 
     if (this.rpc && !this.rpc.opened) await this.rpc.fullyOpened()
 
-    // TODO: what if it's closed?
-
-    let res = null
-    try {
-      res = await this.rpc.request(
-        'metrics',
-        null,
-        { responseEncoding: MetricsReplyEnc }
-      )
-    } catch (e) {
-      // TODO: emit
-      console.log('client error lookup', e)
-      throw e
-    }
+    // Note: can throw (for example if rpc closed in the mean time)
+    const res = await this.rpc.request(
+      'metrics',
+      null,
+      { responseEncoding: MetricsReplyEnc }
+    )
 
     return res
   }
