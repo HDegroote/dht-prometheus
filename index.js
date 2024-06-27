@@ -5,9 +5,10 @@ const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
 const Hyperswarm = require('hyperswarm')
 const HyperDht = require('hyperdht')
+const AliasRpcServer = require('./lib/alias-rpc')
 
 class PrometheusDhtBridge extends ReadyResource {
-  constructor (dht, server) {
+  constructor (dht, server, sharedSecret) {
     super()
 
     const keyPair = HyperDht.keyPair()
@@ -17,12 +18,16 @@ class PrometheusDhtBridge extends ReadyResource {
       // firewall: this._firewall.bind(this)
     })
 
+    this.secret = sharedSecret // Shared with clients
+
     this.server = server
     this.server.get(
       '/scrape/:alias/metrics',
       { logLevel: 'info' },
       this._handleGet.bind(this)
     )
+
+    this.aliasRpcServer = new AliasRpcServer(this.swarm, this.secret, this.putAlias.bind(this))
 
     this.aliases = new Map() // alias->scrapeClient
   }
@@ -35,7 +40,13 @@ class PrometheusDhtBridge extends ReadyResource {
     return this.swarm.keyPair.publicKey
   }
 
+  async _open () {
+    await this.aliasRpcServer.ready()
+  }
+
   async _close () {
+    await this.aliasRpcServer.close()
+
     await Promise.all([
       [...this.aliases.values()].map(a => a.close())
     ])

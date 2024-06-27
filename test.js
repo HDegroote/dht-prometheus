@@ -7,7 +7,6 @@ const HyperDHT = require('hyperdht')
 const fastify = require('fastify')
 const axios = require('axios')
 const AliasRpcClient = require('./lib/alias-rpc-client')
-const AliasRpcServer = require('./lib/alias-rpc')
 const hypCrypto = require('hypercore-crypto')
 
 test('put alias + lookup happy flow', async t => {
@@ -129,31 +128,27 @@ test('No new alias if adding same key', async t => {
   t.is(clientA.closing != null, true, 'lifecycle ok')
 })
 
-test('a client which registers itself gets scraped', async t => {
+test.solo('a client which registers itself gets scraped', async t => {
   const { bridge, dhtPromClient, bootstrap } = await setup(t)
 
   await dhtPromClient.ready()
   await bridge.ready()
-  // console.log('setting to', bridge.swarm.keyPair.publicKey)
-  // dhtPromClient.scraperPublicKey = bridge.swarm.keyPair.publicKey
+
+  bridge.aliasRpcServer.on('alias-request', ({ uid, remotePublicKey, alias, targetPubKey }) => {
+    console.log('received req for alias', alias, 'key', targetPubKey)
+  })
+  bridge.aliasRpcServer.on('register-error', ({ error, uid }) => {
+    console.log('error', error)
+  })
 
   const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
 
-  const secret = hypCrypto.randomBytes(32)
-
-  const aliasServer = new AliasRpcServer(bridge.swarm, secret, bridge.putAlias.bind(bridge))
-  aliasServer.on('alias-request', ({ uid, remotePublicKey, alias, targetPubKey }) => {
-    console.log('received req for alias', alias, 'key', targetPubKey)
-  })
-  aliasServer.on('register-error', ({ error, uid }) => {
-    console.log('error', error)
-  })
-  await aliasServer.ready()
-
-  const aliasClient = new AliasRpcClient(dhtPromClient.dht.defaultKeyPair.publicKey, bridge.swarm.keyPair.publicKey, secret, { bootstrap })
+  // TODO: put in _open of dht-prom-client itself
+  const aliasClient = new AliasRpcClient(dhtPromClient.dht, bridge.swarm.keyPair.publicKey, bridge.secret, { bootstrap })
   await aliasClient.registerAlias()
 
   await bridge.swarm.flush() // To avoid race conditions
+
   const res = await axios.get(
     `${baseUrl}/scrape/dummy/metrics`,
     { validateStatus: null }
@@ -164,8 +159,6 @@ test('a client which registers itself gets scraped', async t => {
     true,
     'Successfully scraped metrics'
   )
-
-  await aliasServer.close()
 })
 
 async function setup (t) {
@@ -175,9 +168,11 @@ async function setup (t) {
   const testnet = await createTestnet()
   const bootstrap = testnet.bootstrap
 
+  const sharedSecret = hypCrypto.randomBytes(32)
+
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger: false })
-  const bridge = new PrometheusDhtBridge(dht, server, { address: '127.0.0.1', port: 30000 })
+  const bridge = new PrometheusDhtBridge(dht, server, sharedSecret)
   const scraperPubKey = bridge.publicKey
 
   const dhtClient = new HyperDHT({ bootstrap })
