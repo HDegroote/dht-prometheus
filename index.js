@@ -42,7 +42,7 @@ class PrometheusDhtBridge extends ReadyResource {
     const current = this.aliases.get(alias)
 
     if (current) {
-      if (b4a.equals(current.key, targetPubKey)) {
+      if (b4a.equals(current.targetKey, targetPubKey)) {
         return // Idempotent
       }
 
