@@ -128,7 +128,7 @@ test('No new alias if adding same key', async t => {
   t.is(clientA.closing != null, true, 'lifecycle ok')
 })
 
-test.solo('a client which registers itself gets scraped', async t => {
+test('a client which registers itself gets scraped', async t => {
   const { bridge, dhtPromClient, bootstrap } = await setup(t)
 
   await dhtPromClient.ready()
@@ -172,7 +172,9 @@ async function setup (t) {
 
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger: false })
-  const bridge = new PrometheusDhtBridge(dht, server, sharedSecret)
+  const bridge = new PrometheusDhtBridge(dht, server, sharedSecret,
+    { _forceFlushOnClientReady: true } // to avoid race conditions
+  )
   const scraperPubKey = bridge.publicKey
 
   const dhtClient = new HyperDHT({ bootstrap })

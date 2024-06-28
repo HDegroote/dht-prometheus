@@ -1,4 +1,3 @@
-const ScraperClient = require('./client')
 const ReadyResource = require('ready-resource')
 const idEnc = require('hypercore-id-encoding')
 const b4a = require('b4a')
@@ -7,15 +6,16 @@ const Hyperswarm = require('hyperswarm')
 const HyperDht = require('hyperdht')
 const AliasRpcServer = require('./lib/alias-rpc')
 
+const ScraperClient = require('dht-prom-client/scraper')
+
 class PrometheusDhtBridge extends ReadyResource {
-  constructor (dht, server, sharedSecret) {
+  constructor (dht, server, sharedSecret, { _forceFlushOnClientReady = false } = {}) {
     super()
 
     const keyPair = HyperDht.keyPair()
     this.swarm = new Hyperswarm({
       dht,
       keyPair
-      // firewall: this._firewall.bind(this)
     })
 
     this.secret = sharedSecret // Shared with clients
@@ -30,6 +30,9 @@ class PrometheusDhtBridge extends ReadyResource {
     this.aliasRpcServer = new AliasRpcServer(this.swarm, this.secret, this.putAlias.bind(this))
 
     this.aliases = new Map() // alias->scrapeClient
+
+    // for tests, to ensure we're connected to the scraper on first scrape
+    this._forceFlushOnCLientReady = _forceFlushOnClientReady
   }
 
   get dht () {
@@ -85,7 +88,10 @@ class PrometheusDhtBridge extends ReadyResource {
       return
     }
 
-    if (!scrapeClient.opened) await scrapeClient.ready()
+    if (!scrapeClient.opened) {
+      await scrapeClient.ready()
+      if (this._forceFlushOnCLientReady) await scrapeClient.swarm.flush()
+    }
 
     let res
     try {
