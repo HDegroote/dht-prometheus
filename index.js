@@ -97,7 +97,6 @@ class PrometheusDhtBridge extends ReadyResource {
     try {
       res = await scrapeClient.lookup()
     } catch (e) {
-      console.error(e)
       this.emit('upstream-error', e)
       reply.code(502)
       reply.send('Upstream unavailable')
