@@ -1,15 +1,24 @@
-const ScraperClient = require('./client')
 const ReadyResource = require('ready-resource')
 const idEnc = require('hypercore-id-encoding')
 const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
 const Hyperswarm = require('hyperswarm')
+const HyperDht = require('hyperdht')
+const AliasRpcServer = require('./lib/alias-rpc')
+
+const ScraperClient = require('dht-prom-client/scraper')
 
 class PrometheusDhtBridge extends ReadyResource {
-  constructor (dht, server) {
+  constructor (dht, server, sharedSecret, { _forceFlushOnClientReady = false } = {}) {
     super()
 
-    this.swarm = new Hyperswarm({ dht })
+    const keyPair = HyperDht.keyPair()
+    this.swarm = new Hyperswarm({
+      dht,
+      keyPair
+    })
+
+    this.secret = sharedSecret // Shared with clients
 
     this.server = server
     this.server.get(
@@ -18,7 +27,12 @@ class PrometheusDhtBridge extends ReadyResource {
       this._handleGet.bind(this)
     )
 
+    this.aliasRpcServer = new AliasRpcServer(this.swarm, this.secret, this.putAlias.bind(this))
+
     this.aliases = new Map() // alias->scrapeClient
+
+    // for tests, to ensure we're connected to the scraper on first scrape
+    this._forceFlushOnCLientReady = _forceFlushOnClientReady
   }
 
   get dht () {
@@ -29,7 +43,13 @@ class PrometheusDhtBridge extends ReadyResource {
     return this.swarm.keyPair.publicKey
   }
 
+  async _open () {
+    await this.aliasRpcServer.ready()
+  }
+
   async _close () {
+    await this.aliasRpcServer.close()
+
     await Promise.all([
       [...this.aliases.values()].map(a => a.close())
     ])
@@ -43,7 +63,8 @@ class PrometheusDhtBridge extends ReadyResource {
 
     if (current) {
       if (b4a.equals(current.targetKey, targetPubKey)) {
-        return // Idempotent
+        const updated = false // Idempotent
+        return updated
       }
 
       current.close().catch(safetyCatch)
@@ -51,6 +72,9 @@ class PrometheusDhtBridge extends ReadyResource {
 
     const scrapeClient = new ScraperClient(this.swarm, targetPubKey)
     this.aliases.set(alias, scrapeClient)
+
+    const updated = true
+    return updated
   }
 
   async _handleGet (req, reply) {
@@ -64,7 +88,10 @@ class PrometheusDhtBridge extends ReadyResource {
       return
     }
 
-    if (!scrapeClient.opened) await scrapeClient.ready()
+    if (!scrapeClient.opened) {
+      await scrapeClient.ready()
+      if (this._forceFlushOnCLientReady) await scrapeClient.swarm.flush()
+    }
 
     let res
     try {

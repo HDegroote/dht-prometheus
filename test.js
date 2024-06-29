@@ -6,6 +6,7 @@ const createTestnet = require('hyperdht/testnet')
 const HyperDHT = require('hyperdht')
 const fastify = require('fastify')
 const axios = require('axios')
+const hypCrypto = require('hypercore-crypto')
 
 test('put alias + lookup happy flow', async t => {
   const { bridge, dhtPromClient } = await setup(t)
@@ -126,6 +127,39 @@ test('No new alias if adding same key', async t => {
   t.is(clientA.closing != null, true, 'lifecycle ok')
 })
 
+test('A client which registers itself can get scraped', async t => {
+  t.plan(4)
+
+  const { bridge, dhtPromClient } = await setup(t)
+
+  await bridge.ready()
+
+  bridge.aliasRpcServer.on('alias-request', ({ uid, remotePublicKey, alias, targetPublicKey }) => {
+    t.is(alias, 'dummy', 'correct alias')
+    t.alike(targetPublicKey, dhtPromClient.publicKey, 'correct target key got registered')
+  })
+  bridge.aliasRpcServer.on('register-error', ({ error, uid }) => {
+    console.error(error)
+    t.fail('unexpected error')
+  })
+
+  const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
+
+  await bridge.swarm.flush() // To avoid race conditions
+  await dhtPromClient.ready()
+
+  const res = await axios.get(
+    `${baseUrl}/scrape/dummy/metrics`,
+    { validateStatus: null }
+  )
+  t.is(res.status, 200, 'correct status')
+  t.is(
+    res.data.includes('process_cpu_user_seconds_total'),
+    true,
+    'Successfully scraped metrics'
+  )
+})
+
 async function setup (t) {
   promClient.collectDefaultMetrics() // So we have something to scrape
   t.teardown(() => promClient.register.clear())
@@ -133,13 +167,17 @@ async function setup (t) {
   const testnet = await createTestnet()
   const bootstrap = testnet.bootstrap
 
+  const sharedSecret = hypCrypto.randomBytes(32)
+
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger: false })
-  const bridge = new PrometheusDhtBridge(dht, server, { address: '127.0.0.1', port: 30000 })
+  const bridge = new PrometheusDhtBridge(dht, server, sharedSecret,
+    { _forceFlushOnClientReady: true } // to avoid race conditions
+  )
   const scraperPubKey = bridge.publicKey
 
   const dhtClient = new HyperDHT({ bootstrap })
-  const dhtPromClient = new DhtPromClient(dhtClient, promClient, scraperPubKey)
+  const dhtPromClient = new DhtPromClient(dhtClient, promClient, scraperPubKey, 'dummy', sharedSecret, { bootstrap })
 
   t.teardown(async () => {
     await server.close()
@@ -149,5 +187,6 @@ async function setup (t) {
     await testnet.destroy()
   })
 
-  return { dhtPromClient, bridge, bootstrap }
+  const ownPublicKey = dhtPromClient.dht.defaultKeyPair.publicKey
+  return { dhtPromClient, bridge, bootstrap, ownPublicKey }
 }
