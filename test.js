@@ -6,7 +6,6 @@ const createTestnet = require('hyperdht/testnet')
 const HyperDHT = require('hyperdht')
 const fastify = require('fastify')
 const axios = require('axios')
-const AliasRpcClient = require('./lib/alias-rpc-client')
 const hypCrypto = require('hypercore-crypto')
 
 test('put alias + lookup happy flow', async t => {
@@ -129,25 +128,25 @@ test('No new alias if adding same key', async t => {
 })
 
 test('a client which registers itself gets scraped', async t => {
-  const { bridge, dhtPromClient, bootstrap } = await setup(t)
+  t.plan(4)
 
-  await dhtPromClient.ready()
+  const { bridge, dhtPromClient } = await setup(t)
+
   await bridge.ready()
 
-  bridge.aliasRpcServer.on('alias-request', ({ uid, remotePublicKey, alias, targetPubKey }) => {
-    console.log('received req for alias', alias, 'key', targetPubKey)
+  bridge.aliasRpcServer.on('alias-request', ({ uid, remotePublicKey, alias, targetPublicKey }) => {
+    t.is(alias, 'dummy', 'correct alias')
+    t.alike(targetPublicKey, dhtPromClient.publicKey, 'correct target key got registered')
   })
   bridge.aliasRpcServer.on('register-error', ({ error, uid }) => {
-    console.log('error', error)
+    console.error(error)
+    t.fail('unexpected error')
   })
 
   const baseUrl = await bridge.server.listen({ host: '127.0.0.1', port: 0 })
 
-  // TODO: put in _open of dht-prom-client itself
-  const aliasClient = new AliasRpcClient(dhtPromClient.dht, bridge.swarm.keyPair.publicKey, bridge.secret, { bootstrap })
-  await aliasClient.registerAlias()
-
   await bridge.swarm.flush() // To avoid race conditions
+  await dhtPromClient.ready()
 
   const res = await axios.get(
     `${baseUrl}/scrape/dummy/metrics`,
@@ -178,7 +177,7 @@ async function setup (t) {
   const scraperPubKey = bridge.publicKey
 
   const dhtClient = new HyperDHT({ bootstrap })
-  const dhtPromClient = new DhtPromClient(dhtClient, promClient, scraperPubKey)
+  const dhtPromClient = new DhtPromClient(dhtClient, promClient, scraperPubKey, 'dummy', sharedSecret, { bootstrap })
 
   t.teardown(async () => {
     await server.close()
@@ -188,5 +187,6 @@ async function setup (t) {
     await testnet.destroy()
   })
 
-  return { dhtPromClient, bridge, bootstrap }
+  const ownPublicKey = dhtPromClient.dht.defaultKeyPair.publicKey
+  return { dhtPromClient, bridge, bootstrap, ownPublicKey }
 }
