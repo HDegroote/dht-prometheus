@@ -110,21 +110,6 @@ class PrometheusDhtBridge extends ReadyResource {
       reply.send(`Upstream error: ${res.errorMessage}`)
     }
   }
-
-  /* _firewall (remotePublicKey, payload, address) {
-    console.log('fire?')
-    const knowsPrivateKey = b4a.equals(
-      remotePublicKey,
-      this.swarm.keyPair.publicKey
-    )
-
-    if (!knowsPrivateKey) {
-      console.log('blocking it', remotePublicKey, 'me', this.swarm.keyPair.publicKey)
-      this.emit('firewall-block', { remotePublicKey, payload, address })
-    }
-
-    return !knowsPrivateKey
-  } */
 }
 
 module.exports = PrometheusDhtBridge

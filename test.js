@@ -127,7 +127,7 @@ test('No new alias if adding same key', async t => {
   t.is(clientA.closing != null, true, 'lifecycle ok')
 })
 
-test('a client which registers itself gets scraped', async t => {
+test('A client which registers itself can get scraped', async t => {
   t.plan(4)
 
   const { bridge, dhtPromClient } = await setup(t)
