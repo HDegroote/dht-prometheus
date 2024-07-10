@@ -7,9 +7,16 @@ const HyperDht = require('hyperdht')
 const AliasRpcServer = require('./lib/alias-rpc')
 
 const ScraperClient = require('dht-prom-client/scraper')
+const { writePromTargets, readPromTargets } = require('./lib/prom-targets')
+const debounceify = require('debounceify')
+
+const DEFAULT_PROM_TARGETS_LOC = './targets.json'
 
 class PrometheusDhtBridge extends ReadyResource {
-  constructor (dht, server, sharedSecret, { _forceFlushOnClientReady = false } = {}) {
+  constructor (dht, server, sharedSecret, {
+    _forceFlushOnClientReady = false,
+    promTargetsLoc = DEFAULT_PROM_TARGETS_LOC
+  } = {}) {
     super()
 
     const keyPair = HyperDht.keyPair()
@@ -27,9 +34,11 @@ class PrometheusDhtBridge extends ReadyResource {
       this._handleGet.bind(this)
     )
 
+    this.promTargetsLoc = promTargetsLoc
     this.aliasRpcServer = new AliasRpcServer(this.swarm, this.secret, this.putAlias.bind(this))
 
-    this.aliases = new Map() // alias->scrapeClient
+    this.aliases = new Map()
+    this._writeAliases = debounceify(this._writeAliasesUndebounced.bind(this))
 
     // for tests, to ensure we're connected to the scraper on first scrape
     this._forceFlushOnCLientReady = _forceFlushOnClientReady
@@ -44,6 +53,8 @@ class PrometheusDhtBridge extends ReadyResource {
   }
 
   async _open () {
+    await this._loadAliases()
+
     await this.aliasRpcServer.ready()
   }
 
@@ -55,6 +66,7 @@ class PrometheusDhtBridge extends ReadyResource {
     ])
 
     await this.swarm.destroy()
+    await this._writeAliases()
   }
 
   putAlias (alias, targetPubKey) {
@@ -74,6 +86,9 @@ class PrometheusDhtBridge extends ReadyResource {
     this.aliases.set(alias, scrapeClient)
 
     const updated = true
+
+    this._writeAliases().catch(safetyCatch)
+
     return updated
   }
 
@@ -107,6 +122,32 @@ class PrometheusDhtBridge extends ReadyResource {
     } else {
       reply.code(502)
       reply.send(`Upstream error: ${res.errorMessage}`)
+    }
+  }
+
+  async _writeAliasesUndebounced () { // should never throw
+    const targets = [...this.aliases.keys()]
+    const pubKeys = [...this.aliases.values()].map(client => idEnc.normalize(client.targetKey))
+
+    try {
+      await writePromTargets(this.promTargetsLoc, targets, pubKeys)
+    } catch (e) {
+      this.emit('write-aliases-error', e)
+    }
+  }
+
+  async _loadAliases () { // should never throw
+    try {
+      const [targets, pubKeys] = await readPromTargets(this.promTargetsLoc)
+      if (targets.length !== pubKeys.length) {
+        throw new Error('Invalid prom targets file')
+      }
+
+      for (let i = 0; i < targets.length; i++) {
+        this.putAlias(targets[i], idEnc.decode(pubKeys[i]))
+      }
+    } catch (e) {
+      this.emit('load-aliases-error', e)
     }
   }
 }
