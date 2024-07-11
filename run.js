@@ -10,11 +10,12 @@ function loadConfig () {
     prometheusTargetsLoc: process.env.DHT_PROM_PROMETHEUS_TARGETS_LOC || './prometheus/targets.json',
     logLevel: process.env.DHT_PROM_LOG_LEVEL || 'info',
     httpPort: process.env.DHT_PROM_HTTP_PORT || 0,
-    httpHost: '127.0.0.1'
+    httpHost: '127.0.0.1',
+    _forceFlushOnClientReady: process.env._DHT_PROM_FORCE_FLUSH || 'false' // Tests only
   }
 
   try {
-    config.sharedSecret = idEnc.normalize(process.env.DHT_PROM_SHARED_SECRET)
+    config.sharedSecret = idEnc.decode(idEnc.normalize(process.env.DHT_PROM_SHARED_SECRET))
   } catch (e) {
     console.error('DHT_PROM_SHARED_SECRET env var must be set to a valid hypercore key')
   }
@@ -36,7 +37,8 @@ async function main () {
     prometheusTargetsLoc,
     sharedSecret,
     httpPort,
-    httpHost
+    httpHost,
+    _forceFlushOnClientReady
   } = loadConfig()
 
   const logger = pino({ level: logLevel })
@@ -45,8 +47,11 @@ async function main () {
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger })
   const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
-    prometheusTargetsLoc
+    prometheusTargetsLoc,
+    _forceFlushOnClientReady
   })
+
+  setupLogging(bridge, logger)
 
   goodbye(async () => {
     logger.info('Shutting down')
@@ -59,6 +64,27 @@ async function main () {
   server.listen({ address: httpHost, port: httpPort })
   await bridge.ready()
   logger.info(`DHT RPC ready at public key ${idEnc.normalize(bridge.publicKey)}`)
+}
+
+function setupLogging (bridge, logger) {
+  bridge.aliasRpcServer.on(
+    'alias-request',
+    ({ uid, remotePublicKey, targetPublicKey, alias }) => {
+      logger.info(`Alias request from ${idEnc.normalize(remotePublicKey)} to set ${alias}->${idEnc.normalize(targetPublicKey)} (uid ${uid})`)
+    }
+  )
+
+  bridge.aliasRpcServer.on(
+    'register-success', ({ uid, alias, targetPublicKey, updated }) => {
+      logger.info(`Alias success for ${alias}->${idEnc.normalize(targetPublicKey)}--updated: ${updated} (uid: ${uid})`)
+    }
+  )
+
+  bridge.aliasRpcServer.on(
+    'register-success', ({ uid, error }) => {
+      logger.info(`Alias error: ${error} (${uid})`)
+    }
+  )
 }
 
 main()

@@ -28,7 +28,8 @@
     "brittle": "^3.5.2",
     "hyperdht": "^6.15.1",
     "prom-client": "^15.1.2",
-    "standard": "^17.1.0"
+    "standard": "^17.1.0",
+    "z32": "^1.1.0"
   },
   "dependencies": {
     "b4a": "^1.6.6",
