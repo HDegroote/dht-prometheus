@@ -44,6 +44,7 @@ async function main () {
   const logger = pino({ level: logLevel })
   logger.info('Starting up Prometheus DHT bridge')
 
+  console.log('TARGETS', prometheusTargetsLoc)
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger })
   const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
@@ -67,6 +68,25 @@ async function main () {
 }
 
 function setupLogging (bridge, logger) {
+  bridge.on('aliases-updated', (loc) => {
+    logger.info(`Updated the aliases file at ${loc}`)
+  })
+
+  bridge.on('load-aliases-error', e => { // TODO: test
+    logger.error('failed to load aliases file')
+    logger.error(e)
+  })
+
+  bridge.on('upstream-error', e => { // TODO: test
+    logger.info('upstream error:')
+    logger.info(e)
+  })
+
+  bridge.on('write-aliases-error', e => {
+    logger.error('Failed to write aliases file')
+    logger.error(e)
+  })
+
   bridge.aliasRpcServer.on(
     'alias-request',
     ({ uid, remotePublicKey, targetPublicKey, alias }) => {
@@ -81,7 +101,7 @@ function setupLogging (bridge, logger) {
   )
 
   bridge.aliasRpcServer.on(
-    'register-success', ({ uid, error }) => {
+    'register-error', ({ uid, error }) => {
       logger.info(`Alias error: ${error} (${uid})`)
     }
   )

@@ -15,7 +15,7 @@ const DEFAULT_PROM_TARGETS_LOC = './targets.json'
 class PrometheusDhtBridge extends ReadyResource {
   constructor (dht, server, sharedSecret, {
     _forceFlushOnClientReady = false,
-    promTargetsLoc = DEFAULT_PROM_TARGETS_LOC
+    prometheusTargetsLoc = DEFAULT_PROM_TARGETS_LOC
   } = {}) {
     super()
 
@@ -34,7 +34,7 @@ class PrometheusDhtBridge extends ReadyResource {
       this._handleGet.bind(this)
     )
 
-    this.promTargetsLoc = promTargetsLoc
+    this.promTargetsLoc = prometheusTargetsLoc
     this.aliasRpcServer = new AliasRpcServer(this.swarm, this.secret, this.putAlias.bind(this))
 
     this.aliases = new Map()
@@ -55,6 +55,8 @@ class PrometheusDhtBridge extends ReadyResource {
   async _open () {
     await this._loadAliases()
 
+    // It is important that the aliases are first loaded
+    // otherwise the old aliases might get overwritten
     await this.aliasRpcServer.ready()
   }
 
@@ -66,10 +68,10 @@ class PrometheusDhtBridge extends ReadyResource {
     ])
 
     await this.swarm.destroy()
-    await this._writeAliases()
+    if (this.opened) await this._writeAliases()
   }
 
-  putAlias (alias, targetPubKey) {
+  putAlias (alias, targetPubKey, { write = true } = {}) {
     targetPubKey = idEnc.decode(idEnc.normalize(targetPubKey))
     const current = this.aliases.get(alias)
 
@@ -87,7 +89,9 @@ class PrometheusDhtBridge extends ReadyResource {
 
     const updated = true
 
-    this._writeAliases().catch(safetyCatch)
+    if (write === true) {
+      this._writeAliases().catch(safetyCatch)
+    }
 
     return updated
   }
@@ -126,11 +130,9 @@ class PrometheusDhtBridge extends ReadyResource {
   }
 
   async _writeAliasesUndebounced () { // should never throw
-    const targets = [...this.aliases.keys()]
-    const pubKeys = [...this.aliases.values()].map(client => idEnc.normalize(client.targetKey))
-
     try {
-      await writePromTargets(this.promTargetsLoc, targets, pubKeys)
+      await writePromTargets(this.promTargetsLoc, this.aliases)
+      this.emit('aliases-updated', this.promTargetsLoc)
     } catch (e) {
       this.emit('write-aliases-error', e)
     }
@@ -138,13 +140,12 @@ class PrometheusDhtBridge extends ReadyResource {
 
   async _loadAliases () { // should never throw
     try {
-      const [targets, pubKeys] = await readPromTargets(this.promTargetsLoc)
-      if (targets.length !== pubKeys.length) {
-        throw new Error('Invalid prom targets file')
-      }
-
-      for (let i = 0; i < targets.length; i++) {
-        this.putAlias(targets[i], idEnc.decode(pubKeys[i]))
+      const aliases = await readPromTargets(this.promTargetsLoc)
+      for (const [alias, pubKey] of aliases) {
+        // Write false since we load an existing state
+        // (otherwise we overwrite them 1 by 1, and can lose
+        // entries if we restart/crash during setup)
+        this.putAlias(alias, pubKey, { write: false })
       }
     } catch (e) {
       this.emit('load-aliases-error', e)

@@ -26,7 +26,7 @@ const z32 = require('z32')
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
-const DEBUG = true
+const DEBUG = false
 
 // To force the process.on('exit') to be called on those exits too
 process.prependListener('SIGINT', () => process.exit(1))
@@ -46,11 +46,17 @@ test('Integration test, happy path', async t => {
   const tAliasReq = t.test('Alias request from new service')
   tAliasReq.plan(2)
 
+  const tPromReady = t.test('Prometheus setup')
+  tPromReady.plan(1)
+
+  const tGotScraped = t.test('Client scraped through the bridge')
+  tGotScraped.plan(2)
+
   const testnet = await createTestnet()
   t.teardown(async () => await testnet.destroy(), 1000)
 
   const tmpDir = await getTmpDir()
-  const promTargetsLoc = path.join(tmpDir, 'prom-targets.json')
+  const promTargetsLoc = path.join(tmpDir, 'targets.json')
   const sharedSecret = hypCrypto.randomBytes(32)
   const z32SharedSecret = idEnc.normalize(sharedSecret)
 
@@ -83,35 +89,49 @@ test('Integration test, happy path', async t => {
   let bridgeHttpAddress = null
   let scraperPubKey = null
 
-  const stdoutDec = new NewlineDecoder('utf-8')
-  firstBridgeProc.stdout.on('data', async d => {
-    if (DEBUG) console.log(d.toString())
+  let gotScrapedOnce = false
+  let gotScrapedOnceSuccessfully = false
+  {
+    const stdoutDec = new NewlineDecoder('utf-8')
+    firstBridgeProc.stdout.on('data', async d => {
+      if (DEBUG) console.log(d.toString())
 
-    for (const line of stdoutDec.push(d)) {
-      if (line.includes('Server listening at')) {
-        bridgeHttpAddress = line.match(/http:\/\/127.0.0.1:[0-9]{3,5}/)[0]
-        tBridgeSetup.pass('http server running')
-      }
+      for (const line of stdoutDec.push(d)) {
+        if (line.includes('Server listening at')) {
+          bridgeHttpAddress = line.match(/http:\/\/127.0.0.1:[0-9]{3,5}/)[0]
+          tBridgeSetup.pass('http server running')
+        }
 
-      if (line.includes('DHT RPC ready at')) {
-        const pubKeyRegex = new RegExp(`[${z32.ALPHABET}]{52}`)
-        scraperPubKey = line.match(pubKeyRegex)[0]
-        tBridgeSetup.pass('dht rpc service running')
-      }
+        if (line.includes('DHT RPC ready at')) {
+          const pubKeyRegex = new RegExp(`[${z32.ALPHABET}]{52}`)
+          scraperPubKey = line.match(pubKeyRegex)[0]
+          tBridgeSetup.pass('dht rpc service running')
+        }
 
-      if (line.includes('Alias request from')) {
-        tAliasReq.pass('Received alias request')
-      }
+        if (line.includes('Alias request from')) {
+          tAliasReq.pass('Received alias request')
+        }
 
-      if (line.includes('Alias success')) {
-        tAliasReq.pass('Successfully processed alias request')
-      }
+        if (line.includes('Alias success')) {
+          tAliasReq.pass('Successfully processed alias request')
+        }
 
-      if (line.includes('Fully shut down')) {
-        tBridgeShutdown.pass('Shut down cleanly')
+        if (!gotScrapedOnce && line.includes('"url":"/scrape/dummy/metrics"')) {
+          tGotScraped.pass('Scrape request received from prometheus')
+          gotScrapedOnce = true
+        }
+
+        if (!gotScrapedOnceSuccessfully && line.includes('"statusCode":200')) {
+          tGotScraped.pass('Scraped successfully')
+          gotScrapedOnceSuccessfully = true
+        }
+
+        if (line.includes('Fully shut down')) {
+          tBridgeShutdown.pass('Shut down cleanly')
+        }
       }
-    }
-  })
+    })
+  }
 
   await tBridgeSetup
 
@@ -125,16 +145,46 @@ test('Integration test, happy path', async t => {
 
   await tAliasReq
 
-  // 3) Shut down bridge
+  // 3) Setup prometheus
+  const promConfigFileLoc = path.join(tmpDir, 'prometheus.yml')
+  await writePromConfig(promConfigFileLoc, bridgeHttpAddress, promTargetsLoc)
+
+  const promProc = spawn(
+    PROMETHEUS_EXECUTABLE,
+    [`--config.file=${promConfigFileLoc}`, '--log.level=debug']
+  )
+
+  // To avoid zombie processes in case there's an error
+  process.on('exit', () => {
+    // TODO: unset this handler on clean run
+    promProc.kill('SIGKILL')
+  })
+
+  {
+    const stdoutDec = new NewlineDecoder('utf-8')
+    // Prometheus logs everything to stderr, so we listen to that
+    promProc.stderr.on('data', d => {
+      if (DEBUG) console.log('PROMETHEUS', d.toString())
+
+      for (const line of stdoutDec.push(d)) {
+        if (line.includes('Server is ready to receive web requests')) {
+          tPromReady.pass('Prometheus ready')
+        }
+      }
+    })
+  }
+
+  await tPromReady
+  await tGotScraped
+
+  // Shut down bridge
   firstBridgeProc.on('close', () => {
     tBridgeShutdown.pass('Process exited')
   })
 
   firstBridgeProc.kill('SIGTERM')
-
+  promProc.kill('SIGTERM') // TODO: wait for exit
   await tBridgeShutdown
-
-  console.log(bridgeHttpAddress)
 })
 
 function getClient (t, bootstrap, scraperPubKey, sharedSecret) {
@@ -156,4 +206,30 @@ function getClient (t, bootstrap, scraperPubKey, sharedSecret) {
   }, 1)
 
   return dhtPromClient
+}
+
+async function writePromConfig (loc, bridgeHttpAddress, promTargetsLoc) {
+  bridgeHttpAddress = bridgeHttpAddress.split('://')[1] // Get rid of http://
+
+  const content = `
+global:
+  scrape_interval:     1s
+  evaluation_interval: 1s
+
+scrape_configs:
+- job_name: 'dht-prom-redirects'
+  file_sd_configs:
+  - files:
+    - '${promTargetsLoc}'
+  relabel_configs:
+    - source_labels: [__address__]
+      regex: "(.+):.{52}" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the key
+      replacement: "/scrape/$1/metrics" # Captured part + /metrics appendix
+      target_label: __metrics_path__ # => instead of default /metrics
+    - source_labels: [__address__]
+      replacement: "${bridgeHttpAddress}"
+      target_label: __address__       # => That's the actual address
+`
+
+  await fs.promises.writeFile(loc, content)
 }
