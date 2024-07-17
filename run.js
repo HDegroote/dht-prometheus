@@ -18,6 +18,14 @@ function loadConfig () {
     config.sharedSecret = idEnc.decode(idEnc.normalize(process.env.DHT_PROM_SHARED_SECRET))
   } catch (e) {
     console.error('DHT_PROM_SHARED_SECRET env var must be set to a valid hypercore key')
+    process.exit(1)
+  }
+
+  try {
+    config.keyPairSeed = idEnc.decode(idEnc.normalize(process.env.DHT_PROM_KEY_PAIR_SEED))
+  } catch (e) {
+    console.error('DHT_PROM_KEY_PAIR_SEED env var, if set, must be set to a valid hypercore key')
+    process.exit(1)
   }
 
   if (process.env.DHT_PROM_BOOTSTRAP_PORT) { // For tests
@@ -38,6 +46,7 @@ async function main () {
     sharedSecret,
     httpPort,
     httpHost,
+    keyPairSeed,
     _forceFlushOnClientReady
   } = loadConfig()
 
@@ -48,6 +57,7 @@ async function main () {
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger })
   const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
+    keyPairSeed,
     prometheusTargetsLoc,
     _forceFlushOnClientReady
   })
@@ -68,6 +78,10 @@ async function main () {
 }
 
 function setupLogging (bridge, logger) {
+  bridge.on('set-alias', ({ alias, publicKey }) => {
+    logger.info(`Registered alias: ${alias} -> ${idEnc.normalize(publicKey)}`)
+  })
+
   bridge.on('aliases-updated', (loc) => {
     logger.info(`Updated the aliases file at ${loc}`)
   })

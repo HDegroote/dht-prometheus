@@ -14,12 +14,15 @@ const DEFAULT_PROM_TARGETS_LOC = './targets.json'
 
 class PrometheusDhtBridge extends ReadyResource {
   constructor (dht, server, sharedSecret, {
+    keyPairSeed,
     _forceFlushOnClientReady = false,
     prometheusTargetsLoc = DEFAULT_PROM_TARGETS_LOC
   } = {}) {
     super()
 
-    const keyPair = HyperDht.keyPair()
+    // Generates new if seed is undefined
+    const keyPair = HyperDht.keyPair(keyPairSeed)
+
     this.swarm = new Hyperswarm({
       dht,
       keyPair
@@ -86,7 +89,7 @@ class PrometheusDhtBridge extends ReadyResource {
 
     const scrapeClient = new ScraperClient(this.swarm, targetPubKey)
     this.aliases.set(alias, scrapeClient)
-
+    this.emit('set-alias', { alias, publicKey: targetPubKey })
     const updated = true
 
     if (write === true) {

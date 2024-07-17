@@ -26,7 +26,7 @@ const z32 = require('z32')
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
-const DEBUG = false
+const DEBUG = true
 
 // To force the process.on('exit') to be called on those exits too
 process.prependListener('SIGINT', () => process.exit(1))
@@ -52,6 +52,15 @@ test('Integration test, happy path', async t => {
   const tGotScraped = t.test('Client scraped through the bridge')
   tGotScraped.plan(2)
 
+  const tPromFailedToScrape = t.test('Bridge went offline')
+  tPromFailedToScrape.plan(1)
+
+  const tGotScrapedPostRe = t.test('Client scraped through the bridge (post restart)')
+  tGotScrapedPostRe.plan(2)
+
+  const tRestartedBridgeShutdown = t.test('Shutdown restarted bridge')
+  tRestartedBridgeShutdown.plan(1)
+
   const testnet = await createTestnet()
   t.teardown(async () => await testnet.destroy(), 1000)
 
@@ -61,17 +70,20 @@ test('Integration test, happy path', async t => {
   const z32SharedSecret = idEnc.normalize(sharedSecret)
 
   // 1) Setup the bridge
+  const bridgeEnvVars = {
+    DHT_PROM_PROMETHEUS_TARGETS_LOC: promTargetsLoc,
+    DHT_PROM_SHARED_SECRET: z32SharedSecret,
+    DHT_PROM_KEY_PAIR_SEED: idEnc.normalize(hypCrypto.randomBytes(32)),
+    DHT_PROM_BOOTSTRAP_PORT: testnet.bootstrap[0].port,
+    _DHT_PROM_FORCE_FLUSH: true
+
+  }
+
   const firstBridgeProc = spawn(
     process.execPath,
     [BRIDGE_EXECUTABLE],
     {
-      env: {
-        DHT_PROM_PROMETHEUS_TARGETS_LOC: promTargetsLoc,
-        DHT_PROM_SHARED_SECRET: z32SharedSecret,
-        DHT_PROM_BOOTSTRAP_PORT: testnet.bootstrap[0].port,
-        _DHT_PROM_FORCE_FLUSH: true
-
-      }
+      env: bridgeEnvVars
     }
   )
 
@@ -87,6 +99,7 @@ test('Integration test, happy path', async t => {
   })
 
   let bridgeHttpAddress = null
+  let bridgeHttpPort = null
   let scraperPubKey = null
 
   let gotScrapedOnce = false
@@ -99,6 +112,8 @@ test('Integration test, happy path', async t => {
       for (const line of stdoutDec.push(d)) {
         if (line.includes('Server listening at')) {
           bridgeHttpAddress = line.match(/http:\/\/127.0.0.1:[0-9]{3,5}/)[0]
+          bridgeHttpPort = bridgeHttpAddress.split(':')[2]
+          console.log('bridge:', bridgeHttpPort, '--', bridgeHttpAddress.split(':'))
           tBridgeSetup.pass('http server running')
         }
 
@@ -163,12 +178,20 @@ test('Integration test, happy path', async t => {
   {
     const stdoutDec = new NewlineDecoder('utf-8')
     // Prometheus logs everything to stderr, so we listen to that
+    let confirmedBridgeOffline = false
+
     promProc.stderr.on('data', d => {
       if (DEBUG) console.log('PROMETHEUS', d.toString())
 
       for (const line of stdoutDec.push(d)) {
         if (line.includes('Server is ready to receive web requests')) {
           tPromReady.pass('Prometheus ready')
+        }
+
+        if (gotScrapedOnceSuccessfully && !confirmedBridgeOffline && line.includes('msg="Scrape failed"')) {
+          // Note: could in theory also fail for other reasons
+          tPromFailedToScrape.pass('The bridge is no longer available')
+          confirmedBridgeOffline = true
         }
       }
     })
@@ -183,8 +206,64 @@ test('Integration test, happy path', async t => {
   })
 
   firstBridgeProc.kill('SIGTERM')
-  promProc.kill('SIGTERM') // TODO: wait for exit
   await tBridgeShutdown
+  await tPromFailedToScrape // Make sure prom knows the bridge is offline
+
+  // Restart bridge
+  const restartedBridgeProc = spawn(
+    process.execPath,
+    [BRIDGE_EXECUTABLE],
+    {
+      env: {
+        ...bridgeEnvVars,
+        DHT_PROM_HTTP_PORT: bridgeHttpPort // Reused to simplify the test (we ignore the small chance that the port is already used by another process)
+      }
+    }
+  )
+
+  // To avoid zombie processes in case there's an error
+  process.on('exit', () => {
+    // TODO: unset this handler on clean run
+    restartedBridgeProc.kill('SIGKILL')
+  })
+
+  restartedBridgeProc.stderr.on('data', d => {
+    console.error(d.toString())
+    t.fail('There should be no stderr')
+  })
+
+  restartedBridgeProc.on('close', () => {
+    tRestartedBridgeShutdown.pass('Process exited')
+  })
+
+  {
+    let gotScrapedOncePostRe = false
+    let gotScrapedOnceSuccessfullyPostRe = false
+
+    const stdoutDec = new NewlineDecoder('utf-8')
+    restartedBridgeProc.stdout.on('data', async d => {
+      if (DEBUG) console.log(d.toString())
+
+      for (const line of stdoutDec.push(d)) {
+        if (!gotScrapedOncePostRe && line.includes('"url":"/scrape/dummy/metrics"')) {
+          tGotScrapedPostRe.pass('Scrape request received from prometheus')
+          gotScrapedOncePostRe = true
+        }
+
+        if (!gotScrapedOnceSuccessfullyPostRe && line.includes('"statusCode":200')) {
+          tGotScrapedPostRe.pass('Scraped successfully (aliases correctly loaded on restart)')
+          gotScrapedOnceSuccessfullyPostRe = true
+        }
+      }
+    })
+  }
+
+  await tGotScrapedPostRe
+
+  promProc.kill('SIGTERM') // TODO: wait for exit
+
+  restartedBridgeProc.kill('SIGTERM')
+  await tRestartedBridgeShutdown
 })
 
 function getClient (t, bootstrap, scraperPubKey, sharedSecret) {
