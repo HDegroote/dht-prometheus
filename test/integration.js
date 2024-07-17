@@ -26,13 +26,18 @@ const z32 = require('z32')
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
-const DEBUG = true
+const DEBUG = false
+
+// Note: move this inside the test if we ever have >1 integration test
+promClient.collectDefaultMetrics() // So we have something to scrape
 
 // To force the process.on('exit') to be called on those exits too
 process.prependListener('SIGINT', () => process.exit(1))
 process.prependListener('SIGTERM', () => process.exit(1))
 
 test('Integration test, happy path', async t => {
+  t.timeout(120_000) // ~20s expected
+
   if (!fs.existsSync(PROMETHEUS_EXECUTABLE)) {
     throw new Error('the integration test requires a prometheus exec')
   }
@@ -57,6 +62,12 @@ test('Integration test, happy path', async t => {
 
   const tGotScrapedPostRe = t.test('Client scraped through the bridge (post restart)')
   tGotScrapedPostRe.plan(2)
+
+  const tAlias2Req = t.test('Alias request from the second service')
+  tAlias2Req.plan(2)
+
+  const tClient2GotScraped = t.test('Client scraped through the bridge (post restart)')
+  tClient2GotScraped.plan(2)
 
   const tRestartedBridgeShutdown = t.test('Shutdown restarted bridge')
   tRestartedBridgeShutdown.plan(1)
@@ -113,7 +124,6 @@ test('Integration test, happy path', async t => {
         if (line.includes('Server listening at')) {
           bridgeHttpAddress = line.match(/http:\/\/127.0.0.1:[0-9]{3,5}/)[0]
           bridgeHttpPort = bridgeHttpAddress.split(':')[2]
-          console.log('bridge:', bridgeHttpPort, '--', bridgeHttpAddress.split(':'))
           tBridgeSetup.pass('http server running')
         }
 
@@ -151,12 +161,14 @@ test('Integration test, happy path', async t => {
   await tBridgeSetup
 
   // 2) Setting up a client
-  const client = getClient(t, testnet.bootstrap, scraperPubKey, sharedSecret)
-  client.on('register-alias-error', e => {
-    console.error(e)
-    t.fail('Error when client tried to register alias')
-  })
-  await client.ready()
+  {
+    const client = getClient(t, testnet.bootstrap, scraperPubKey, sharedSecret)
+    client.on('register-alias-error', e => {
+      console.error(e)
+      t.fail('Error when client tried to register alias')
+    })
+    await client.ready()
+  }
 
   await tAliasReq
 
@@ -200,7 +212,8 @@ test('Integration test, happy path', async t => {
   await tPromReady
   await tGotScraped
 
-  // Shut down bridge
+  // 4) Restart bridge
+  // a) Shut down bridge
   firstBridgeProc.on('close', () => {
     tBridgeShutdown.pass('Process exited')
   })
@@ -209,7 +222,7 @@ test('Integration test, happy path', async t => {
   await tBridgeShutdown
   await tPromFailedToScrape // Make sure prom knows the bridge is offline
 
-  // Restart bridge
+  // b) Restart bridge
   const restartedBridgeProc = spawn(
     process.execPath,
     [BRIDGE_EXECUTABLE],
@@ -240,6 +253,8 @@ test('Integration test, happy path', async t => {
     let gotScrapedOncePostRe = false
     let gotScrapedOnceSuccessfullyPostRe = false
 
+    let secondClientScrapeReqId = null
+
     const stdoutDec = new NewlineDecoder('utf-8')
     restartedBridgeProc.stdout.on('data', async d => {
       if (DEBUG) console.log(d.toString())
@@ -254,27 +269,65 @@ test('Integration test, happy path', async t => {
           tGotScrapedPostRe.pass('Scraped successfully (aliases correctly loaded on restart)')
           gotScrapedOnceSuccessfullyPostRe = true
         }
+
+        if (line.includes('Alias request from')) {
+          tAlias2Req.pass('Received second alias request')
+        }
+
+        if (line.includes('Alias success')) {
+          tAlias2Req.pass('Successfully processed second alias request')
+        }
+
+        if (!secondClientScrapeReqId && line.includes('secondummy/metrics')) {
+          tClient2GotScraped.pass('Scrape req received for client2 (prometheus config got reloaded)')
+          secondClientScrapeReqId = JSON.parse(line).reqId
+        }
+
+        // Note: Small chance of false positive if another req id starts the same
+        const secondClientScraped = secondClientScrapeReqId !== null
+        if (secondClientScraped && line.includes(secondClientScrapeReqId) && line.includes('"statusCode":200')) {
+          tClient2GotScraped.pass('Scraped successfully (client2)')
+        }
       }
     })
   }
 
   await tGotScrapedPostRe
 
+  // 5) Add another client
+  {
+    const client2 = getClient(
+      t,
+      testnet.bootstrap,
+      scraperPubKey,
+      sharedSecret,
+      { name: 'secondummy' }
+    )
+
+    client2.on('register-alias-error', e => {
+      console.error(e)
+      t.fail('Error when client tried to register alias')
+    })
+    await client2.ready()
+  }
+
+  await tAlias2Req
+  await tClient2GotScraped
+
+  console.log('killing prometheus')
   promProc.kill('SIGTERM') // TODO: wait for exit
 
   restartedBridgeProc.kill('SIGTERM')
   await tRestartedBridgeShutdown
 })
 
-function getClient (t, bootstrap, scraperPubKey, sharedSecret) {
-  promClient.collectDefaultMetrics() // So we have something to scrape
-
+function getClient (t, bootstrap, scraperPubKey, sharedSecret, { name = 'dummy' } = {}) {
   const dhtClient = new HyperDHT({ bootstrap })
   const dhtPromClient = new DhtPromClient(
     dhtClient,
     promClient,
     idEnc.decode(scraperPubKey),
-    'dummy',
+    name,
     sharedSecret,
     { bootstrap }
   )
