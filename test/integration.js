@@ -26,7 +26,7 @@ const z32 = require('z32')
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
-const DEBUG = true
+const DEBUG = false
 
 // Note: move this inside the test if we ever have >1 integration test
 promClient.collectDefaultMetrics() // So we have something to scrape
