@@ -1,0 +1,20 @@
+# This is an example config.
+
+global:
+  scrape_interval:     5s
+  evaluation_interval: 5s
+
+# Source for relabeling approach: https://stackoverflow.com/questions/59866342/prometheus-dynamic-metrics-path
+scrape_configs:
+- job_name: 'dht-prom-redirects'
+  file_sd_configs:
+  - files:
+    - 'targets.json'
+  relabel_configs:
+    - source_labels: [__address__]
+      regex: "(.+):.{52}" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the key
+      replacement: "/lookup/$1/metrics/" # Captured part + /metrics appendix
+      target_label: __metrics_path__ # => instead of default /metrics
+    - source_labels: [__address__]
+      replacement: "localhost:30000"
+      target_label: __address__       # => That's the actual address
