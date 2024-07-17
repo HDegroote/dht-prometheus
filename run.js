@@ -72,7 +72,7 @@ async function main () {
     logger.info('Fully shut down')
   })
 
-  server.listen({ address: httpHost, port: httpPort })
+  server.listen({ host: httpHost, port: httpPort })
   await bridge.ready()
   logger.info(`DHT RPC ready at public key ${idEnc.normalize(bridge.publicKey)}`)
 }
