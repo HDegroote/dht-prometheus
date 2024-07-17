@@ -4,7 +4,7 @@
   "description": "Bridge to scrape Prometheus metrics exposed over hyperdht",
   "main": "index.js",
   "scripts": {
-    "test": "standard && brittle test/test.js"
+    "test": "standard && brittle test/test.js && ./prep-integration-test.sh && brittle test/integration.js"
   },
   "repository": {
     "type": "git",
