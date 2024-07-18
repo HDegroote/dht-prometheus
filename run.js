@@ -1,3 +1,5 @@
+#! /usr/bin/env node
+
 const HyperDHT = require('hyperdht')
 const PrometheusDhtBridge = require('./index')
 const pino = require('pino')

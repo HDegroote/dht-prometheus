@@ -28,14 +28,14 @@ Note: `/etc/prometheus/config/prometheus-dht-targets` should be writable by the 
 
 #### CLI
 
+Install:
+```
+npm i -g dht-prometheus
+```
+
+Run:
 ```
 DHT_PROM_PROMETHEUS_TARGETS_LOC=path/to/prometheus/targets.json DHT_PROM_HTTP_PORT=30000 DHT_PROM_SHARED_SECRET=<A 64 character hex string> dht-prometheus
-```
-
-## Install
-
-```
-npm i dht-prometheus
 ```
 
 ## Test

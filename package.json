@@ -1,10 +1,13 @@
 {
   "name": "dht-prometheus",
   "version": "0.0.0",
-  "description": "Bridge to scrape Prometheus metrics exposed over hyperdht",
+  "description": "Bridge to scrape Prometheus metrics fully peer to peer",
   "main": "index.js",
   "scripts": {
     "test": "standard && brittle test/test.js && ./prep-integration-test.sh && brittle test/integration.js"
+  },
+  "bin": {
+    "dht-prometheus": "./run.js"
   },
   "repository": {
     "type": "git",
