@@ -3,3 +3,4 @@ package-lock.json
 
 prometheus/prometheus
 prometheus.tar.gz
+prometheus/targets.json
