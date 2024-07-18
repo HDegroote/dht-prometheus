@@ -24,8 +24,10 @@ function loadConfig () {
   try {
     config.keyPairSeed = idEnc.decode(idEnc.normalize(process.env.DHT_PROM_KEY_PAIR_SEED))
   } catch (e) {
-    console.error('DHT_PROM_KEY_PAIR_SEED env var, if set, must be set to a valid hypercore key')
-    process.exit(1)
+    if (process.env.DHT_PROM_KEY_PAIR_SEED) {
+      console.error('DHT_PROM_KEY_PAIR_SEED env var, if set, must be set to a valid hypercore key')
+      process.exit(1)
+    }
   }
 
   if (process.env.DHT_PROM_BOOTSTRAP_PORT) { // For tests
@@ -53,7 +55,6 @@ async function main () {
   const logger = pino({ level: logLevel })
   logger.info('Starting up Prometheus DHT bridge')
 
-  console.log('TARGETS', prometheusTargetsLoc)
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger })
   const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
