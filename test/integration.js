@@ -1,13 +1,3 @@
-// 1) Start bridge which scrapes every second
-// 2) start a service (which autoregisters)
-// 3) Verify it's scraped
-// 4) restart the bridge
-// 5) Verify the bridge loads same config
-// 6) verify service scraped
-// 7) restart service
-// 8) verify it reregisters the new pub key
-// 9) Verify it's scraped successfully
-
 const fs = require('fs')
 const process = require('process')
 const { spawn } = require('child_process')
@@ -66,7 +56,7 @@ test('Integration test, happy path', async t => {
   const tAlias2Req = t.test('Alias request from the second service')
   tAlias2Req.plan(2)
 
-  const tClient2GotScraped = t.test('Client scraped through the bridge (post restart)')
+  const tClient2GotScraped = t.test('Client 2 scraped through the bridge')
   tClient2GotScraped.plan(2)
 
   const tRestartedBridgeShutdown = t.test('Shutdown restarted bridge')

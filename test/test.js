@@ -174,15 +174,22 @@ async function setup (t) {
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger: false })
   const tmpDir = await getTmpDir(t)
-  const promTargetsLoc = path.join(tmpDir, 'prom-targets.json')
+  const prometheusTargetsLoc = path.join(tmpDir, 'prom-targets.json')
   const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
     _forceFlushOnClientReady: true, // to avoid race conditions
-    promTargetsLoc
+    prometheusTargetsLoc
   })
   const scraperPubKey = bridge.publicKey
 
   const dhtClient = new HyperDHT({ bootstrap })
-  const dhtPromClient = new DhtPromClient(dhtClient, promClient, scraperPubKey, 'dummy', sharedSecret, { bootstrap })
+  const dhtPromClient = new DhtPromClient(
+    dhtClient,
+    promClient,
+    scraperPubKey,
+    'dummy',
+    sharedSecret,
+    { bootstrap }
+  )
 
   t.teardown(async () => {
     await server.close()
