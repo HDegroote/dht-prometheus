@@ -7,12 +7,22 @@ const HyperDht = require('hyperdht')
 const AliasRpcServer = require('./lib/alias-rpc')
 
 const ScraperClient = require('dht-prom-client/scraper')
+const { writePromTargets, readPromTargets } = require('./lib/prom-targets')
+const debounceify = require('debounceify')
+
+const DEFAULT_PROM_TARGETS_LOC = './targets.json'
 
 class PrometheusDhtBridge extends ReadyResource {
-  constructor (dht, server, sharedSecret, { _forceFlushOnClientReady = false } = {}) {
+  constructor (dht, server, sharedSecret, {
+    keyPairSeed,
+    _forceFlushOnClientReady = false,
+    prometheusTargetsLoc = DEFAULT_PROM_TARGETS_LOC
+  } = {}) {
     super()
 
-    const keyPair = HyperDht.keyPair()
+    // Generates new if seed is undefined
+    const keyPair = HyperDht.keyPair(keyPairSeed)
+
     this.swarm = new Hyperswarm({
       dht,
       keyPair
@@ -27,9 +37,11 @@ class PrometheusDhtBridge extends ReadyResource {
       this._handleGet.bind(this)
     )
 
+    this.promTargetsLoc = prometheusTargetsLoc
     this.aliasRpcServer = new AliasRpcServer(this.swarm, this.secret, this.putAlias.bind(this))
 
-    this.aliases = new Map() // alias->scrapeClient
+    this.aliases = new Map()
+    this._writeAliases = debounceify(this._writeAliasesUndebounced.bind(this))
 
     // for tests, to ensure we're connected to the scraper on first scrape
     this._forceFlushOnCLientReady = _forceFlushOnClientReady
@@ -44,6 +56,10 @@ class PrometheusDhtBridge extends ReadyResource {
   }
 
   async _open () {
+    await this._loadAliases()
+
+    // It is important that the aliases are first loaded
+    // otherwise the old aliases might get overwritten
     await this.aliasRpcServer.ready()
   }
 
@@ -55,9 +71,10 @@ class PrometheusDhtBridge extends ReadyResource {
     ])
 
     await this.swarm.destroy()
+    if (this.opened) await this._writeAliases()
   }
 
-  putAlias (alias, targetPubKey) {
+  putAlias (alias, targetPubKey, { write = true } = {}) {
     targetPubKey = idEnc.decode(idEnc.normalize(targetPubKey))
     const current = this.aliases.get(alias)
 
@@ -72,8 +89,13 @@ class PrometheusDhtBridge extends ReadyResource {
 
     const scrapeClient = new ScraperClient(this.swarm, targetPubKey)
     this.aliases.set(alias, scrapeClient)
-
+    this.emit('set-alias', { alias, publicKey: targetPubKey })
     const updated = true
+
+    if (write === true) {
+      this._writeAliases().catch(safetyCatch)
+    }
+
     return updated
   }
 
@@ -107,6 +129,29 @@ class PrometheusDhtBridge extends ReadyResource {
     } else {
       reply.code(502)
       reply.send(`Upstream error: ${res.errorMessage}`)
+    }
+  }
+
+  async _writeAliasesUndebounced () { // should never throw
+    try {
+      await writePromTargets(this.promTargetsLoc, this.aliases)
+      this.emit('aliases-updated', this.promTargetsLoc)
+    } catch (e) {
+      this.emit('write-aliases-error', e)
+    }
+  }
+
+  async _loadAliases () { // should never throw
+    try {
+      const aliases = await readPromTargets(this.promTargetsLoc)
+      for (const [alias, pubKey] of aliases) {
+        // Write false since we load an existing state
+        // (otherwise we overwrite them 1 by 1, and can lose
+        // entries if we restart/crash during setup)
+        this.putAlias(alias, pubKey, { write: false })
+      }
+    } catch (e) {
+      this.emit('load-aliases-error', e)
     }
   }
 }

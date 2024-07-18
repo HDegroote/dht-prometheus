@@ -1,5 +1,4 @@
 const test = require('brittle')
-const PrometheusDhtBridge = require('./index')
 const promClient = require('prom-client')
 const DhtPromClient = require('dht-prom-client')
 const createTestnet = require('hyperdht/testnet')
@@ -7,6 +6,9 @@ const HyperDHT = require('hyperdht')
 const fastify = require('fastify')
 const axios = require('axios')
 const hypCrypto = require('hypercore-crypto')
+const getTmpDir = require('test-tmp')
+const path = require('path')
+const PrometheusDhtBridge = require('../index')
 
 test('put alias + lookup happy flow', async t => {
   const { bridge, dhtPromClient } = await setup(t)
@@ -171,13 +173,23 @@ async function setup (t) {
 
   const dht = new HyperDHT({ bootstrap })
   const server = fastify({ logger: false })
-  const bridge = new PrometheusDhtBridge(dht, server, sharedSecret,
-    { _forceFlushOnClientReady: true } // to avoid race conditions
-  )
+  const tmpDir = await getTmpDir(t)
+  const prometheusTargetsLoc = path.join(tmpDir, 'prom-targets.json')
+  const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
+    _forceFlushOnClientReady: true, // to avoid race conditions
+    prometheusTargetsLoc
+  })
   const scraperPubKey = bridge.publicKey
 
   const dhtClient = new HyperDHT({ bootstrap })
-  const dhtPromClient = new DhtPromClient(dhtClient, promClient, scraperPubKey, 'dummy', sharedSecret, { bootstrap })
+  const dhtPromClient = new DhtPromClient(
+    dhtClient,
+    promClient,
+    scraperPubKey,
+    'dummy',
+    sharedSecret,
+    { bootstrap }
+  )
 
   t.teardown(async () => {
     await server.close()

@@ -1,2 +1,8 @@
 node_modules/
 package-lock.json
+
+prometheus/prometheus
+prometheus.tar.gz
+prometheus/targets.json
+
+data/
