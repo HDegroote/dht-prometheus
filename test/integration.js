@@ -314,11 +314,14 @@ test('Integration test, happy path', async t => {
   await tAlias2Req
   await tClient2GotScraped
 
-  console.log('killing prometheus')
-  promProc.kill('SIGTERM') // TODO: wait for exit
+  const promClosed = new Promise(resolve => {
+    promProc.on('close', resolve)
+  })
+  promProc.kill('SIGTERM')
 
   restartedBridgeProc.kill('SIGTERM')
-  await tRestartedBridgeShutdown
+
+  await Promise.all([tRestartedBridgeShutdown, promClosed])
 })
 
 function getClient (t, bootstrap, scraperPubKey, sharedSecret, { name = 'dummy' } = {}) {
