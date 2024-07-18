@@ -13,7 +13,7 @@ scrape_configs:
   relabel_configs:
     - source_labels: [__address__]
       regex: "(.+):.{52}" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the target name
-      replacement: "/lookup/$1/metrics/" # Captured part + /metrics appendix
+      replacement: "/scrape/$1/metrics" # Captured part + /metrics appendix
       target_label: __metrics_path__ # => instead of default /metrics
     - source_labels: [__address__]
       replacement: "localhost:30000" # Replace with the port where the dht-prometheus http server runs
