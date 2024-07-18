@@ -16,6 +16,18 @@ The DHT-prometheus service fulfils two complementary roles:
 
 ### Run
 
+#### Docker
+
+```
+docker run --network host --env DHT_PROM_SHARED_SECRET=<A 64 character hex string> --mount type=bind,source=/etc/prometheus/config/prometheus-dht-targets,destination=/home/dht-prometheus/prometheus
+```
+
+The intent is for the prometheus service to read its config from a read-only bind mount to `/etc/prometheus/config`, and for its config file to reference `./prometheus-dht-targets/targets.json`
+
+Note: `/etc/prometheus/config/prometheus-dht-targets` should be writable by the container's user.
+
+#### CLI
+
 ```
 DHT_PROM_PROMETHEUS_TARGETS_LOC=path/to/prometheus/targets.json DHT_PROM_HTTP_PORT=30000 DHT_PROM_SHARED_SECRET=<A 64 character hex string> dht-prometheus
 ```
