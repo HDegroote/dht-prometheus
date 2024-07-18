@@ -1,6 +1,6 @@
 {
   "name": "dht-prometheus",
-  "version": "0.0.0",
+  "version": "0.0.1-alpha.0",
   "description": "Bridge to scrape Prometheus metrics fully peer to peer",
   "main": "index.js",
   "scripts": {
