@@ -115,6 +115,13 @@ function setupLogging (bridge, logger) {
     }
   )
 
+  // TODO: log IP address + rate limit
+  bridge.aliasRpcServer.on(
+    'alias-unauthorised', ({ uid, remotePublicKey, targetPublicKey, alias }) => {
+      logger.info(`Unauthorised alias request from ${idEnc.normalize(remotePublicKey)} to set alias ${alias}->${idEnc.normalize(targetPublicKey)} (uid: ${uid})`)
+    }
+  )
+
   bridge.aliasRpcServer.on(
     'register-error', ({ uid, error }) => {
       logger.info(`Alias error: ${error} (${uid})`)
