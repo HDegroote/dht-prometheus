@@ -4,7 +4,8 @@
   "description": "Bridge to scrape Prometheus metrics fully peer to peer",
   "main": "index.js",
   "scripts": {
-    "test": "standard && brittle test/test.js && ./prep-integration-test.sh && brittle test/integration.js"
+    "test": "standard && brittle test/test.js",
+    "integration": "./prep-integration-test.sh && brittle test/integration.js"
   },
   "bin": {
     "dht-prometheus": "./run.js"

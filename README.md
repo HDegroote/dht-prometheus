@@ -40,8 +40,14 @@ DHT_PROM_PROMETHEUS_TARGETS_LOC=path/to/prometheus/targets.json DHT_PROM_HTTP_PO
 
 ## Test
 
-Note: the tests run [./prep-integration-test.sh](./prep-integration-test.sh), which downloads Prometheus and copies the executable to the ./prometheus directory.
-
 ```
 npm test
 ```
+
+Integration tests are also included:
+
+```
+npm run integration
+```
+
+Note: the integration tests run [./prep-integration-test.sh](./prep-integration-test.sh), which downloads Prometheus and copies the executable to the ./prometheus directory.
