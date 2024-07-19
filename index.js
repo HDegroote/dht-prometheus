@@ -122,6 +122,7 @@ class PrometheusDhtBridge extends ReadyResource {
       this.emit('upstream-error', e)
       reply.code(502)
       reply.send('Upstream unavailable')
+      return
     }
 
     if (res.success) {
