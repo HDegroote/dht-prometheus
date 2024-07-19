@@ -1,3 +1,6 @@
+const path = require('path')
+const { once } = require('events')
+
 const test = require('brittle')
 const promClient = require('prom-client')
 const DhtPromClient = require('dht-prom-client')
@@ -7,7 +10,6 @@ const fastify = require('fastify')
 const axios = require('axios')
 const hypCrypto = require('hypercore-crypto')
 const getTmpDir = require('test-tmp')
-const path = require('path')
 const PrometheusDhtBridge = require('../index')
 
 test('put alias + lookup happy flow', async t => {
@@ -118,6 +120,7 @@ test('No new alias if adding same key', async t => {
   await bridge.ready()
   bridge.putAlias('dummy', key)
   const clientA = bridge.aliases.get('dummy')
+  await clientA.ready() // Bit of a hack, but needed for lifecycle check
 
   t.is(clientA != null, true, 'sanity check')
   bridge.putAlias('dummy', key)
@@ -162,7 +165,68 @@ test('A client which registers itself can get scraped', async t => {
   )
 })
 
-async function setup (t) {
+test('A client gets removed and closed after it expires', async t => {
+  const { bridge } = await setup(t, {
+    entryExpiryMs: 500,
+    checkExpiredsIntervalMs: 100
+  })
+  const key = 'a'.repeat(64)
+
+  await bridge.ready()
+
+  bridge.putAlias('dummy', key)
+
+  const entry = bridge.aliases.get('dummy')
+  await entry.ready() // ~Hack, to make it easy to check the lifecycle
+
+  t.is(entry.closing === null, true, 'sanity check')
+  t.is(bridge.aliases.size, 1, 'sanity check')
+
+  const [{ alias: expiredAlias }] = await once(bridge, 'alias-expired')
+  t.is(expiredAlias, 'dummy', 'alias-expired event emitted')
+
+  t.is(bridge.aliases.size, 0, 'alias removed when expired')
+  t.is(entry.closing !== null, true, 'The alias entry is closing (or closed)')
+})
+
+test('A client does not get removed if it renews before the expiry', async t => {
+  // Test is somewhat susceptible to CPU blocking due to timings
+  // (add more margin if that happens in practice)
+  const { bridge } = await setup(t, {
+    entryExpiryMs: 500,
+    checkExpiredsIntervalMs: 100
+  })
+  const key = 'a'.repeat(64)
+
+  await bridge.ready()
+  bridge.putAlias('dummy', key)
+  setTimeout(() => {
+    bridge.putAlias('dummy', key)
+  }, bridge.entryExpiryMs / 2)
+
+  const entry = bridge.aliases.get('dummy')
+  await entry.ready() // ~Hack, to make it easy to check the lifecycle
+
+  t.is(entry.closing === null, true, 'sanity check')
+
+  t.is(bridge.aliases.size, 1, 'sanity check')
+
+  await new Promise(resolve => setTimeout(
+    resolve, bridge.entryExpiryMs + 100
+  ))
+
+  t.is(bridge.aliases.size, 1, 'alias not removed if renewed in time')
+  t.is(entry.closing === null, true, 'Sanity check: entry not closed if renewed in time')
+
+  await new Promise(resolve => setTimeout(
+    resolve, bridge.entryExpiryMs + 100
+  ))
+
+  t.is(bridge.aliases.size, 0, 'alias removed when expired')
+  t.is(entry.closing !== null, true, 'The alias entry is closing (or closed)')
+})
+
+async function setup (t, bridgeOpts = {}) {
   promClient.collectDefaultMetrics() // So we have something to scrape
   t.teardown(() => promClient.register.clear())
 
@@ -177,7 +241,8 @@ async function setup (t) {
   const prometheusTargetsLoc = path.join(tmpDir, 'prom-targets.json')
   const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
     _forceFlushOnClientReady: true, // to avoid race conditions
-    prometheusTargetsLoc
+    prometheusTargetsLoc,
+    ...bridgeOpts
   })
   const scraperPubKey = bridge.publicKey
 

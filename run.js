@@ -89,6 +89,10 @@ function setupLogging (bridge, logger) {
     logger.info(`Updated the aliases file at ${loc}`)
   })
 
+  bridge.on('alias-expired', ({ alias, publicKey }) => {
+    logger.info(`Alias entry expired: ${alias} -> ${idEnc.normalize(publicKey)}`)
+  })
+
   bridge.on('load-aliases-error', e => { // TODO: test
     logger.error('failed to load aliases file')
     logger.error(e)
