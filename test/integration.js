@@ -17,6 +17,7 @@ const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
 const DEBUG = false
+const DEBUG_PROMETHEUS = false
 
 // Note: move this inside the test if we ever have >1 integration test
 promClient.collectDefaultMetrics() // So we have something to scrape
@@ -183,7 +184,7 @@ test('Integration test, happy path', async t => {
     let confirmedBridgeOffline = false
 
     promProc.stderr.on('data', d => {
-      if (DEBUG) console.log('PROMETHEUS', d.toString())
+      if (DEBUG_PROMETHEUS) console.log('PROMETHEUS', d.toString())
 
       for (const line of stdoutDec.push(d)) {
         if (line.includes('Server is ready to receive web requests')) {

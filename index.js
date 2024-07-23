@@ -115,7 +115,7 @@ class PrometheusDhtBridge extends ReadyResource {
     )
 
     this.aliases.set(alias, entry)
-    this.emit('set-alias', { alias, publicKey: targetPubKey })
+    this.emit('set-alias', { alias, publicKey: targetPubKey, scrapeClient: entry.scrapeClient })
     const updated = true
 
     if (write === true) {

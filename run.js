@@ -81,8 +81,23 @@ async function main () {
 }
 
 function setupLogging (bridge, logger) {
-  bridge.on('set-alias', ({ alias, publicKey }) => {
+  bridge.on('set-alias', ({ alias, publicKey, scrapeClient }) => {
     logger.info(`Registered alias: ${alias} -> ${idEnc.normalize(publicKey)}`)
+
+    scrapeClient.on('connection-open', ({ uid, targetKey, peerInfo }) => {
+      logger.info(`Scraper for ${alias}->${idEnc.normalize(targetKey)} opened connection from ${idEnc.normalize(peerInfo.publicKey)} (uid: ${uid})`)
+    })
+    scrapeClient.on('connection-ignore', ({ uid }) => {
+      logger.info(`Scraper for ${alias} ignored connection (uid: ${uid})`)
+    })
+    scrapeClient.on('connection-close', ({ uid }) => {
+      logger.info(`Scraper for ${alias} closed connection (uid: ${uid})`)
+    })
+
+    scrapeClient.on('connection-error', ({ error, uid }) => {
+      logger.info(`Scraper for ${alias} connection error (uid: ${uid})`)
+      logger.info(error)
+    })
   })
 
   bridge.on('aliases-updated', (loc) => {
