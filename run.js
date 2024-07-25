@@ -148,6 +148,28 @@ function setupLogging (bridge, logger) {
       logger.info(`Alias error: ${error} (${uid})`)
     }
   )
+
+  bridge.aliasRpcServer.on(
+    'connection-open',
+    ({ uid, peerInfo }) => {
+      const remotePublicKey = idEnc.normalize(peerInfo.publicKey)
+      logger.info(`Alias server opened connection to ${idEnc.normalize(remotePublicKey)} (uid ${uid})`)
+    }
+  )
+  bridge.aliasRpcServer.on(
+    'connection-close',
+    ({ uid, peerInfo }) => {
+      const remotePublicKey = idEnc.normalize(peerInfo.publicKey)
+      logger.info(`Alias server closed connection to ${idEnc.normalize(remotePublicKey)} (uid ${uid})`)
+    }
+  )
+  bridge.aliasRpcServer.on(
+    'connection-error',
+    ({ uid, error, peerInfo }) => {
+      const remotePublicKey = idEnc.normalize(peerInfo.publicKey)
+      logger.info(`Alias server socket error: ${error.stack} on connection to ${idEnc.normalize(remotePublicKey)} (uid ${uid})`)
+    }
+  )
 }
 
 main()
