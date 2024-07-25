@@ -187,6 +187,9 @@ test('A client gets removed and closed after it expires', async t => {
 
   t.is(bridge.aliases.size, 0, 'alias removed when expired')
   t.is(entry.closing !== null, true, 'The alias entry is closing (or closed)')
+
+  await once(bridge, 'aliases-updated')
+  t.pass('aliases file rewritten after an entry gets removed')
 })
 
 test('A client does not get removed if it renews before the expiry', async t => {

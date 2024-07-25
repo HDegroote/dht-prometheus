@@ -138,6 +138,10 @@ class PrometheusDhtBridge extends ReadyResource {
       entry.close().catch(safetyCatch)
       this.emit('alias-expired', { publicKey: entry.targetKey, alias })
     }
+
+    if (toRemove.length > 0) {
+      this._writeAliases().catch(safetyCatch)
+    }
   }
 
   async _handleGet (req, reply) {
