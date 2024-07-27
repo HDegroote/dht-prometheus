@@ -4,7 +4,7 @@ const b4a = require('b4a')
 const safetyCatch = require('safety-catch')
 const Hyperswarm = require('hyperswarm')
 const HyperDht = require('hyperdht')
-const AliasRpcServer = require('./lib/alias-rpc')
+const AliasRpcServer = require('dht-prom-alias-rpc')
 
 const ScraperClient = require('dht-prom-client/scraper')
 const { writePromTargets, readPromTargets } = require('./lib/prom-targets')
