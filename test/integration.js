@@ -16,7 +16,7 @@ const z32 = require('z32')
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
-const DEBUG = false
+const DEBUG = true
 const DEBUG_PROMETHEUS = false
 
 // Note: move this inside the test if we ever have >1 integration test
@@ -77,8 +77,8 @@ test('Integration test, happy path', async t => {
     DHT_PROM_SHARED_SECRET: z32SharedSecret,
     DHT_PROM_KEY_PAIR_SEED: idEnc.normalize(hypCrypto.randomBytes(32)),
     DHT_PROM_BOOTSTRAP_PORT: testnet.bootstrap[0].port,
-    _DHT_PROM_FORCE_FLUSH: true
-
+    _DHT_PROM_FORCE_FLUSH: true,
+    DHT_PROM_LOG_LEVEL: 'debug'
   }
 
   const firstBridgeProc = spawn(
