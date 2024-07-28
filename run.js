@@ -81,8 +81,12 @@ async function main () {
 }
 
 function setupLogging (bridge, logger) {
-  bridge.on('set-alias', ({ alias, publicKey, scrapeClient }) => {
-    logger.info(`Registered alias: ${alias} -> ${idEnc.normalize(publicKey)}`)
+  bridge.on('set-alias', ({ alias, entry }) => {
+    const scrapeClient = entry.scrapeClient
+    const publicKey = scrapeClient.targetKey
+    const { service, hostname } = entry
+
+    logger.info(`Registered alias: ${alias} -> ${idEnc.normalize(publicKey)} (${service} on host ${hostname})`)
 
     scrapeClient.on('connection-open', ({ uid, targetKey, peerInfo }) => {
       logger.info(`Scraper for ${alias}->${idEnc.normalize(targetKey)} opened connection from ${idEnc.normalize(peerInfo.publicKey)} (uid: ${uid})`)
