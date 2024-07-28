@@ -16,8 +16,8 @@ const z32 = require('z32')
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
-const DEBUG = false
-const DEBUG_PROMETHEUS = false
+const DEBUG = true
+const DEBUG_PROMETHEUS = true
 
 // Note: move this inside the test if we ever have >1 integration test
 promClient.collectDefaultMetrics() // So we have something to scrape
@@ -350,12 +350,20 @@ scrape_configs:
     - '${promTargetsLoc}'
   relabel_configs:
     - source_labels: [__address__]
-      regex: "(.+):.{52}:.+" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the key
+      regex: "(.+):.{52}:.+" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the target name
       replacement: "/scrape/$1/metrics" # Captured part + /metrics appendix
       target_label: __metrics_path__ # => instead of default /metrics
     - source_labels: [__address__]
-      replacement: "${bridgeHttpAddress}"
-      target_label: __address__       # => That's the actual address
+      replacement: "${bridgeHttpAddress}" # Replace with the port where the dht-prometheus http server runs
+      target_label: __address__
+    - source_labels: [__address__]
+      regex: ".+:.{52}:([^:]+):.+:" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the target name
+      replacement: "$1" # Captured part + /metrics appendix
+      target_label: hostname
+    - source_labels: [__address__]
+      regex: ".+:.{52}:[^:]+:(.+):" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the target name
+      replacement: "$1" # Captured part + /metrics appendix
+      target_label: service
 `
 
   await fs.promises.writeFile(loc, content)
