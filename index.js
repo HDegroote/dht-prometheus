@@ -18,7 +18,8 @@ class PrometheusDhtBridge extends ReadyResource {
     _forceFlushOnClientReady = false,
     prometheusTargetsLoc = DEFAULT_PROM_TARGETS_LOC,
     entryExpiryMs = 3 * 60 * 60 * 1000,
-    checkExpiredsIntervalMs = 60 * 60 * 1000
+    checkExpiredsIntervalMs = 60 * 60 * 1000,
+    serverLogLevel = 'warn'
   } = {}) {
     super()
 
@@ -39,7 +40,7 @@ class PrometheusDhtBridge extends ReadyResource {
     this.server = server
     this.server.get(
       '/scrape/:alias/metrics',
-      { logLevel: 'info' },
+      { logLevel: serverLogLevel },
       this._handleGet.bind(this)
     )
 

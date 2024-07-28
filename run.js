@@ -10,11 +10,15 @@ const goodbye = require('graceful-goodbye')
 function loadConfig () {
   const config = {
     prometheusTargetsLoc: process.env.DHT_PROM_PROMETHEUS_TARGETS_LOC || './prometheus/targets.json',
-    logLevel: process.env.DHT_PROM_LOG_LEVEL || 'info',
+    logLevel: (process.env.DHT_PROM_LOG_LEVEL || 'info').toLowerCase(),
     httpPort: process.env.DHT_PROM_HTTP_PORT || 0,
     httpHost: '127.0.0.1',
     _forceFlushOnClientReady: process.env._DHT_PROM_FORCE_FLUSH || 'false' // Tests only
   }
+
+  config.serverLogLevel = config.logLevel === 'debug'
+    ? 'info'
+    : 'warn' // No need to log all metrics requests
 
   try {
     config.sharedSecret = idEnc.decode(idEnc.normalize(process.env.DHT_PROM_SHARED_SECRET))
@@ -51,6 +55,7 @@ async function main () {
     httpPort,
     httpHost,
     keyPairSeed,
+    serverLogLevel,
     _forceFlushOnClientReady
   } = loadConfig()
 
@@ -62,7 +67,8 @@ async function main () {
   const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
     keyPairSeed,
     prometheusTargetsLoc,
-    _forceFlushOnClientReady
+    _forceFlushOnClientReady,
+    serverLogLevel
   })
 
   setupLogging(bridge, logger)
@@ -91,17 +97,19 @@ function setupLogging (bridge, logger) {
     scrapeClient.on('connection-open', ({ uid, targetKey, peerInfo }) => {
       logger.info(`Scraper for ${alias}->${idEnc.normalize(targetKey)} opened connection from ${idEnc.normalize(peerInfo.publicKey)} (uid: ${uid})`)
     })
-    scrapeClient.on('connection-ignore', ({ uid }) => {
-      logger.info(`Scraper for ${alias} ignored connection (uid: ${uid})`)
-    })
     scrapeClient.on('connection-close', ({ uid }) => {
       logger.info(`Scraper for ${alias} closed connection (uid: ${uid})`)
     })
-
     scrapeClient.on('connection-error', ({ error, uid }) => {
       logger.info(`Scraper for ${alias} connection error (uid: ${uid})`)
       logger.info(error)
     })
+
+    if (logger.level === 'debug') {
+      scrapeClient.on('connection-ignore', ({ uid }) => {
+        logger.debug(`Scraper for ${alias} ignored connection (uid: ${uid})`)
+      })
+    }
   })
 
   bridge.on('aliases-updated', (loc) => {
@@ -113,6 +121,7 @@ function setupLogging (bridge, logger) {
   })
 
   bridge.on('load-aliases-error', e => { // TODO: test
+    // Expected first time the service starts (creates it then)
     logger.error('failed to load aliases file')
     logger.error(e)
   })
@@ -133,20 +142,17 @@ function setupLogging (bridge, logger) {
       logger.info(`Alias request from ${idEnc.normalize(remotePublicKey)} to set ${alias}->${idEnc.normalize(targetPublicKey)} (uid ${uid})`)
     }
   )
-
   bridge.aliasRpcServer.on(
     'register-success', ({ uid, alias, targetPublicKey, updated }) => {
       logger.info(`Alias success for ${alias}->${idEnc.normalize(targetPublicKey)}--updated: ${updated} (uid: ${uid})`)
     }
   )
-
   // TODO: log IP address + rate limit
   bridge.aliasRpcServer.on(
     'alias-unauthorised', ({ uid, remotePublicKey, targetPublicKey, alias }) => {
       logger.info(`Unauthorised alias request from ${idEnc.normalize(remotePublicKey)} to set alias ${alias}->${idEnc.normalize(targetPublicKey)} (uid: ${uid})`)
     }
   )
-
   bridge.aliasRpcServer.on(
     'register-error', ({ uid, error }) => {
       logger.info(`Alias error: ${error} (${uid})`)
