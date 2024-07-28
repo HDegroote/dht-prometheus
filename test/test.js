@@ -256,7 +256,8 @@ async function setup (t, bridgeOpts = {}) {
     scraperPubKey,
     'dummy',
     sharedSecret,
-    { bootstrap }
+    'my-service',
+    { bootstrap, hostname: 'my-hostname' }
   )
 
   t.teardown(async () => {
