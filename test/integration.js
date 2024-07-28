@@ -323,7 +323,8 @@ function getClient (t, bootstrap, scraperPubKey, sharedSecret, { name = 'dummy' 
     idEnc.decode(scraperPubKey),
     name,
     sharedSecret,
-    { bootstrap }
+    'my-service',
+    { bootstrap, hostname: 'my-hostname' }
   )
 
   t.teardown(async () => {
@@ -349,7 +350,7 @@ scrape_configs:
     - '${promTargetsLoc}'
   relabel_configs:
     - source_labels: [__address__]
-      regex: "(.+):.{52}" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the key
+      regex: "(.+):.{52}:.+" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the key
       replacement: "/scrape/$1/metrics" # Captured part + /metrics appendix
       target_label: __metrics_path__ # => instead of default /metrics
     - source_labels: [__address__]

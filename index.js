@@ -93,7 +93,7 @@ class PrometheusDhtBridge extends ReadyResource {
     if (this.opened) await this._writeAliases()
   }
 
-  putAlias (alias, targetPubKey, { write = true } = {}) {
+  putAlias (alias, targetPubKey, hostname, service, { write = true } = {}) {
     if (!this.opened && write) throw new Error('Cannot put aliases before ready')
 
     targetPubKey = idEnc.decode(idEnc.normalize(targetPubKey))
@@ -111,10 +111,13 @@ class PrometheusDhtBridge extends ReadyResource {
 
     const entry = new AliasesEntry(
       new ScraperClient(this.swarm, targetPubKey),
+      hostname,
+      service,
       Date.now() + this.entryExpiryMs
     )
 
     this.aliases.set(alias, entry)
+    // TODO: just emit entry?
     this.emit('set-alias', { alias, publicKey: targetPubKey, scrapeClient: entry.scrapeClient })
     const updated = true
 
@@ -192,11 +195,12 @@ class PrometheusDhtBridge extends ReadyResource {
   async _loadAliases () { // should never throw
     try {
       const aliases = await readPromTargets(this.promTargetsLoc)
-      for (const [alias, pubKey] of aliases) {
+
+      for (const [alias, { z32PubKey, hostname, service }] of aliases) {
         // Write false since we load an existing state
         // (otherwise we overwrite them 1 by 1, and can lose
         // entries if we restart/crash during setup)
-        this.putAlias(alias, pubKey, { write: false })
+        this.putAlias(alias, z32PubKey, hostname, service, { write: false })
       }
     } catch (e) {
       this.emit('load-aliases-error', e)
@@ -205,10 +209,12 @@ class PrometheusDhtBridge extends ReadyResource {
 }
 
 class AliasesEntry extends ReadyResource {
-  constructor (scrapeClient, expiry) {
+  constructor (scrapeClient, hostname, service, expiry) {
     super()
 
     this.scrapeClient = scrapeClient
+    this.hostname = hostname
+    this.service = service
     this.expiry = expiry
   }
 
