@@ -350,20 +350,23 @@ scrape_configs:
     - '${promTargetsLoc}'
   relabel_configs:
     - source_labels: [__address__]
-      regex: "(.+):.{52}:.+" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the target name
-      replacement: "/scrape/$1/metrics" # Captured part + /metrics appendix
+      regex: "(.+):.{52}:.+"
+      replacement: "$1"
+      target_label: instance
+    - source_labels: [instance]
+      replacement: "/scrape/$1/metrics"
       target_label: __metrics_path__ # => instead of default /metrics
     - source_labels: [__address__]
-      replacement: "${bridgeHttpAddress}" # Replace with the port where the dht-prometheus http server runs
-      target_label: __address__
-    - source_labels: [__address__]
-      regex: ".+:.{52}:([^:]+):.+:" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the target name
-      replacement: "$1" # Captured part + /metrics appendix
+      regex: ".+:.{52}:([^:]+):.+"
+      replacement: "$1"
       target_label: hostname
     - source_labels: [__address__]
-      regex: ".+:.{52}:[^:]+:(.+):" # Targets are structured as <targetname>:<target z32 key>, and at prometheus level we only need the target name
-      replacement: "$1" # Captured part + /metrics appendix
+      regex: ".+:.{52}:[^:]+:(.+)"
+      replacement: "$1"
       target_label: service
+    - source_labels: [__address__]
+      replacement: "${bridgeHttpAddress}"
+      target_label: __address__
 `
 
   await fs.promises.writeFile(loc, content)
