@@ -15,6 +15,7 @@ const DEFAULT_PROM_TARGETS_LOC = './targets.json'
 class PrometheusDhtBridge extends ReadyResource {
   constructor (dht, server, sharedSecret, {
     keyPairSeed,
+    ownPromClient,
     _forceFlushOnClientReady = false,
     prometheusTargetsLoc = DEFAULT_PROM_TARGETS_LOC,
     entryExpiryMs = 3 * 60 * 60 * 1000,
@@ -43,6 +44,18 @@ class PrometheusDhtBridge extends ReadyResource {
       { logLevel: serverLogLevel },
       this._handleGet.bind(this)
     )
+
+    ownPromClient = ownPromClient || null
+    if (ownPromClient) {
+      this.server.get(
+        '/metrics',
+        { logLevel: serverLogLevel },
+        async function (req, reply) {
+          const metrics = await ownPromClient.register.metrics()
+          reply.send(metrics)
+        }
+      )
+    }
 
     this.promTargetsLoc = prometheusTargetsLoc
     this.aliasRpcServer = new AliasRpcServer(this.swarm, this.secret, this.putAlias.bind(this))

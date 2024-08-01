@@ -6,6 +6,7 @@ const pino = require('pino')
 const fastify = require('fastify')
 const idEnc = require('hypercore-id-encoding')
 const goodbye = require('graceful-goodbye')
+const promClient = require('prom-client')
 
 function loadConfig () {
   const config = {
@@ -59,6 +60,8 @@ async function main () {
     _forceFlushOnClientReady
   } = loadConfig()
 
+  promClient.collectDefaultMetrics()
+
   const logger = pino({ level: logLevel })
   logger.info('Starting up Prometheus DHT bridge')
 
@@ -66,6 +69,7 @@ async function main () {
   const server = fastify({ logger })
   const bridge = new PrometheusDhtBridge(dht, server, sharedSecret, {
     keyPairSeed,
+    ownPromClient: promClient,
     prometheusTargetsLoc,
     _forceFlushOnClientReady,
     serverLogLevel
