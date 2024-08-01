@@ -12,6 +12,7 @@ const promClient = require('prom-client')
 const DhtPromClient = require('dht-prom-client')
 const HyperDHT = require('hyperdht')
 const z32 = require('z32')
+const axios = require('axios')
 
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
@@ -162,6 +163,10 @@ test('Integration test, happy path', async t => {
   }
 
   await tAliasReq
+
+  const res = await axios.get(`${bridgeHttpAddress}/metrics`)
+  t.is(res.status, 200, 'can scrape own metrics')
+  t.is(res.data.includes('nodejs_eventloop_lag_mean_seconds'), true, 'sanity check')
 
   // 3) Setup prometheus
   const promConfigFileLoc = path.join(tmpDir, 'prometheus.yml')

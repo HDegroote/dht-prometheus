@@ -1,8 +1,8 @@
 # This is an example config.
 
 global:
-  scrape_interval: 1s
-  evaluation_interval: 1s
+  scrape_interval: 5s
+  evaluation_interval: 5s
 
 # Source for relabeling approach: https://stackoverflow.com/questions/59866342/prometheus-dynamic-metrics-path
 scrape_configs:
