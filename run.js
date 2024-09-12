@@ -147,7 +147,7 @@ function setupLogging (bridge, logger) {
     }
   )
   bridge.aliasRpcServer.on(
-    'register-success', ({ uid, alias, targetPublicKey, updated }) => {
+    'alias-success', ({ uid, alias, targetPublicKey, updated }) => {
       logger.info(`Alias success for ${alias}->${idEnc.normalize(targetPublicKey)}--updated: ${updated} (uid: ${uid})`)
     }
   )
@@ -158,7 +158,7 @@ function setupLogging (bridge, logger) {
     }
   )
   bridge.aliasRpcServer.on(
-    'register-error', ({ uid, error }) => {
+    'alias-error', ({ uid, error }) => {
       logger.info(`Alias error: ${error} (${uid})`)
     }
   )

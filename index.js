@@ -76,11 +76,10 @@ class PrometheusDhtBridge extends ReadyResource {
   }
 
   async _open () {
-    await this._loadAliases()
-
     // It is important that the aliases are first loaded
     // otherwise the old aliases might get overwritten
-    await this.aliasRpcServer.ready()
+    await this._loadAliases()
+    await this.swarm.listen()
 
     this._checkExpiredsInterval = setInterval(
       () => this.cleanupExpireds(),
@@ -93,8 +92,6 @@ class PrometheusDhtBridge extends ReadyResource {
     if (this._checkExpiredsInterval) {
       clearInterval(this._checkExpiredsInterval)
     }
-
-    await this.aliasRpcServer.close()
 
     await Promise.all([
       [...this.aliases.values()].map(a => {
@@ -217,6 +214,8 @@ class PrometheusDhtBridge extends ReadyResource {
         this.putAlias(alias, z32PubKey, hostname, service, { write: false })
       }
     } catch (e) {
+      // An error is expected if the file does not yet exist
+      // (typically first run only)
       this.emit('load-aliases-error', e)
     }
   }

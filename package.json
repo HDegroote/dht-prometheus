@@ -40,8 +40,8 @@
   "dependencies": {
     "b4a": "^1.6.6",
     "debounceify": "^1.1.0",
-    "dht-prom-alias-rpc": "^0.0.1-alpha.1",
-    "dht-prom-client": "^0.0.1-alpha.10",
+    "dht-prom-alias-rpc": "https://git@gitlab.com/dcent-tech/dht-prom-alias-rpc#v1",
+    "dht-prom-client": "https://git@gitlab.com/dcent-tech/dht-prom-client#v1",
     "fastify": "^4.28.0",
     "graceful-goodbye": "^1.3.0",
     "hypercore-id-encoding": "^1.3.0",

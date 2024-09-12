@@ -157,6 +157,7 @@ test('A client which registers itself can get scraped', async t => {
     `${baseUrl}/scrape/dummy/metrics`,
     { validateStatus: null }
   )
+
   t.is(res.status, 200, 'correct status')
   t.is(
     res.data.includes('process_cpu_user_seconds_total'),
@@ -266,6 +267,7 @@ async function setup (t, bridgeOpts = {}) {
     await dhtPromClient.close()
     await dht.destroy()
     await testnet.destroy()
+    promClient.register.clear()
   })
 
   const ownPublicKey = dhtPromClient.dht.defaultKeyPair.publicKey
