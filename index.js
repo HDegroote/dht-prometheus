@@ -234,8 +234,7 @@ class PrometheusDhtBridge extends ReadyResource {
         logger.info(`Scraper for ${alias} closed connection (uid: ${uid})`)
       })
       scrapeClient.on('connection-error', ({ error, uid }) => {
-        logger.info(`Scraper for ${alias} connection error (uid: ${uid})`)
-        logger.info(error)
+        logger.info(`Scraper for ${alias} connection error (uid: ${uid}): ${error.stack}`)
       })
 
       if (logger.level === 'debug') {
@@ -253,20 +252,17 @@ class PrometheusDhtBridge extends ReadyResource {
       logger.info(`Alias entry expired: ${alias} -> ${idEnc.normalize(publicKey)}`)
     })
 
-    this.on('load-aliases-error', e => { // TODO: test
+    this.on('load-aliases-error', e => {
       // Expected first time the service starts (creates it then)
-      logger.error('failed to load aliases file')
-      logger.error(e)
+      logger.error(`failed to load aliases file: ${e.stack}`)
     })
 
-    this.on('upstream-error', e => { // TODO: test
-      logger.info('upstream error:')
-      logger.info(e)
+    this.on('upstream-error', e => {
+      logger.info(`upstream error: ${e.stack}`)
     })
 
     this.on('write-aliases-error', e => {
-      logger.error('Failed to write aliases file')
-      logger.error(e)
+      logger.error(`Failed to write aliases file ${e.stack}`)
     })
 
     this.aliasRpcServer.registerLogger(logger)
