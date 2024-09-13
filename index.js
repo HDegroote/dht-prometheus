@@ -138,25 +138,6 @@ class PrometheusDhtBridge extends ReadyResource {
     return updated
   }
 
-  // Should be kept sync (or think hard)
-  cleanupExpireds () {
-    const toRemove = []
-    for (const [alias, entry] of this.aliases) {
-      if (entry.isExpired) toRemove.push(alias)
-    }
-
-    for (const alias of toRemove) {
-      const entry = this.aliases.get(alias)
-      this.aliases.delete(alias)
-      entry.close().catch(safetyCatch)
-      this.emit('alias-expired', { publicKey: entry.targetKey, alias })
-    }
-
-    if (toRemove.length > 0) {
-      this._writeAliases().catch(safetyCatch)
-    }
-  }
-
   async _handleGet (req, reply) {
     const alias = req.params.alias
 
@@ -217,6 +198,78 @@ class PrometheusDhtBridge extends ReadyResource {
       // (typically first run only)
       this.emit('load-aliases-error', e)
     }
+  }
+
+  // Should be kept sync (or think hard)
+  cleanupExpireds () {
+    const toRemove = []
+    for (const [alias, entry] of this.aliases) {
+      if (entry.isExpired) toRemove.push(alias)
+    }
+
+    for (const alias of toRemove) {
+      const entry = this.aliases.get(alias)
+      this.aliases.delete(alias)
+      entry.close().catch(safetyCatch)
+      this.emit('alias-expired', { publicKey: entry.targetKey, alias })
+    }
+
+    if (toRemove.length > 0) {
+      this._writeAliases().catch(safetyCatch)
+    }
+  }
+
+  registerLogger (logger) {
+    this.on('set-alias', ({ alias, entry }) => {
+      const scrapeClient = entry.scrapeClient
+      const publicKey = scrapeClient.targetKey
+      const { service, hostname } = entry
+
+      logger.info(`Registered alias: ${alias} -> ${idEnc.normalize(publicKey)} (${service} on host ${hostname})`)
+
+      scrapeClient.on('connection-open', ({ uid, targetKey, peerInfo }) => {
+        logger.info(`Scraper for ${alias}->${idEnc.normalize(targetKey)} opened connection from ${idEnc.normalize(peerInfo.publicKey)} (uid: ${uid})`)
+      })
+      scrapeClient.on('connection-close', ({ uid }) => {
+        logger.info(`Scraper for ${alias} closed connection (uid: ${uid})`)
+      })
+      scrapeClient.on('connection-error', ({ error, uid }) => {
+        logger.info(`Scraper for ${alias} connection error (uid: ${uid})`)
+        logger.info(error)
+      })
+
+      if (logger.level === 'debug') {
+        scrapeClient.on('connection-ignore', ({ uid }) => {
+          logger.debug(`Scraper for ${alias} ignored connection (uid: ${uid})`)
+        })
+      }
+    })
+
+    this.on('aliases-updated', (loc) => {
+      logger.info(`Updated the aliases file at ${loc}`)
+    })
+
+    this.on('alias-expired', ({ alias, publicKey }) => {
+      logger.info(`Alias entry expired: ${alias} -> ${idEnc.normalize(publicKey)}`)
+    })
+
+    this.on('load-aliases-error', e => { // TODO: test
+      // Expected first time the service starts (creates it then)
+      logger.error('failed to load aliases file')
+      logger.error(e)
+    })
+
+    this.on('upstream-error', e => { // TODO: test
+      logger.info('upstream error:')
+      logger.info(e)
+    })
+
+    this.on('write-aliases-error', e => {
+      logger.error('Failed to write aliases file')
+      logger.error(e)
+    })
+
+    this.aliasRpcServer.registerLogger(logger)
   }
 }
 

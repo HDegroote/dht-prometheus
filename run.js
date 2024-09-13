@@ -75,7 +75,7 @@ async function main () {
     serverLogLevel
   })
 
-  setupLogging(bridge, logger)
+  bridge.registerLogger(logger)
 
   goodbye(async () => {
     logger.info('Shutting down')
@@ -88,102 +88,6 @@ async function main () {
   server.listen({ host: httpHost, port: httpPort })
   await bridge.ready()
   logger.info(`DHT RPC ready at public key ${idEnc.normalize(bridge.publicKey)}`)
-}
-
-function setupLogging (bridge, logger) {
-  bridge.on('set-alias', ({ alias, entry }) => {
-    const scrapeClient = entry.scrapeClient
-    const publicKey = scrapeClient.targetKey
-    const { service, hostname } = entry
-
-    logger.info(`Registered alias: ${alias} -> ${idEnc.normalize(publicKey)} (${service} on host ${hostname})`)
-
-    scrapeClient.on('connection-open', ({ uid, targetKey, peerInfo }) => {
-      logger.info(`Scraper for ${alias}->${idEnc.normalize(targetKey)} opened connection from ${idEnc.normalize(peerInfo.publicKey)} (uid: ${uid})`)
-    })
-    scrapeClient.on('connection-close', ({ uid }) => {
-      logger.info(`Scraper for ${alias} closed connection (uid: ${uid})`)
-    })
-    scrapeClient.on('connection-error', ({ error, uid }) => {
-      logger.info(`Scraper for ${alias} connection error (uid: ${uid})`)
-      logger.info(error)
-    })
-
-    if (logger.level === 'debug') {
-      scrapeClient.on('connection-ignore', ({ uid }) => {
-        logger.debug(`Scraper for ${alias} ignored connection (uid: ${uid})`)
-      })
-    }
-  })
-
-  bridge.on('aliases-updated', (loc) => {
-    logger.info(`Updated the aliases file at ${loc}`)
-  })
-
-  bridge.on('alias-expired', ({ alias, publicKey }) => {
-    logger.info(`Alias entry expired: ${alias} -> ${idEnc.normalize(publicKey)}`)
-  })
-
-  bridge.on('load-aliases-error', e => { // TODO: test
-    // Expected first time the service starts (creates it then)
-    logger.error('failed to load aliases file')
-    logger.error(e)
-  })
-
-  bridge.on('upstream-error', e => { // TODO: test
-    logger.info('upstream error:')
-    logger.info(e)
-  })
-
-  bridge.on('write-aliases-error', e => {
-    logger.error('Failed to write aliases file')
-    logger.error(e)
-  })
-
-  bridge.aliasRpcServer.on(
-    'alias-request',
-    ({ uid, remotePublicKey, targetPublicKey, alias }) => {
-      logger.info(`Alias request from ${idEnc.normalize(remotePublicKey)} to set ${alias}->${idEnc.normalize(targetPublicKey)} (uid ${uid})`)
-    }
-  )
-  bridge.aliasRpcServer.on(
-    'alias-success', ({ uid, alias, targetPublicKey, updated }) => {
-      logger.info(`Alias success for ${alias}->${idEnc.normalize(targetPublicKey)}--updated: ${updated} (uid: ${uid})`)
-    }
-  )
-  // TODO: log IP address + rate limit
-  bridge.aliasRpcServer.on(
-    'alias-unauthorised', ({ uid, remotePublicKey, targetPublicKey, alias }) => {
-      logger.info(`Unauthorised alias request from ${idEnc.normalize(remotePublicKey)} to set alias ${alias}->${idEnc.normalize(targetPublicKey)} (uid: ${uid})`)
-    }
-  )
-  bridge.aliasRpcServer.on(
-    'alias-error', ({ uid, error }) => {
-      logger.info(`Alias error: ${error} (${uid})`)
-    }
-  )
-
-  bridge.aliasRpcServer.on(
-    'connection-open',
-    ({ uid, peerInfo }) => {
-      const remotePublicKey = idEnc.normalize(peerInfo.publicKey)
-      logger.info(`Alias server opened connection to ${idEnc.normalize(remotePublicKey)} (uid ${uid})`)
-    }
-  )
-  bridge.aliasRpcServer.on(
-    'connection-close',
-    ({ uid, peerInfo }) => {
-      const remotePublicKey = idEnc.normalize(peerInfo.publicKey)
-      logger.info(`Alias server closed connection to ${idEnc.normalize(remotePublicKey)} (uid ${uid})`)
-    }
-  )
-  bridge.aliasRpcServer.on(
-    'connection-error',
-    ({ uid, error, peerInfo }) => {
-      const remotePublicKey = idEnc.normalize(peerInfo.publicKey)
-      logger.info(`Alias server socket error: ${error.stack} on connection to ${idEnc.normalize(remotePublicKey)} (uid ${uid})`)
-    }
-  )
 }
 
 main()
