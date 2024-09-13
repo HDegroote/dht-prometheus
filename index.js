@@ -128,7 +128,6 @@ class PrometheusDhtBridge extends ReadyResource {
     )
 
     this.aliases.set(alias, entry)
-    // TODO: just emit entry?
     this.emit('set-alias', { alias, entry })
     const updated = true
 
