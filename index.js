@@ -158,7 +158,7 @@ class PrometheusDhtBridge extends ReadyResource {
 
     let res
     try {
-      res = await scrapeClient.lookup()
+      res = await scrapeClient.requestMetrics()
     } catch (e) {
       this.emit('upstream-error', e)
       reply.code(502)
