@@ -17,7 +17,7 @@ const axios = require('axios')
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
-const DEBUG = true
+const DEBUG = false
 const DEBUG_PROMETHEUS = false
 
 // To force the process.on('exit') to be called on those exits too

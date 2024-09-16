@@ -227,19 +227,19 @@ class PrometheusDhtBridge extends ReadyResource {
 
       logger.info(`Registered alias: ${alias} -> ${idEnc.normalize(publicKey)} (${service} on host ${hostname})`)
 
-      scrapeClient.on('connection-open', ({ uid, targetKey, peerInfo }) => {
-        logger.info(`Scraper for ${alias}->${idEnc.normalize(targetKey)} opened connection from ${idEnc.normalize(peerInfo.publicKey)} (uid: ${uid})`)
+      scrapeClient.on('connection-open', ({ uid, remotePublicKey, remoteAddress }) => {
+        logger.info(`Scraper for ${alias}->${idEnc.normalize(remotePublicKey)} opened connection to ${remoteAddress} (uid: ${uid})`)
       })
-      scrapeClient.on('connection-close', ({ uid }) => {
-        logger.info(`Scraper for ${alias} closed connection (uid: ${uid})`)
+      scrapeClient.on('connection-close', ({ uid, remotePublicKey, remoteAddress }) => {
+        logger.info(`Scraper for ${alias}->${idEnc.normalize(remotePublicKey)} closed connection to ${remoteAddress} (uid: ${uid})`)
       })
-      scrapeClient.on('connection-error', ({ error, uid }) => {
-        logger.info(`Scraper for ${alias} connection error (uid: ${uid}): ${error.stack}`)
+      scrapeClient.on('connection-error', ({ error, uid, remotePublicKey, remoteAddress }) => {
+        logger.info(`Scraper for ${alias}->${idEnc.normalize(remotePublicKey)} at ${remoteAddress} connection error (uid: ${uid}): ${error.stack}`)
       })
 
       if (logger.level === 'debug') {
-        scrapeClient.on('connection-ignore', ({ uid }) => {
-          logger.debug(`Scraper for ${alias} ignored connection (uid: ${uid})`)
+        scrapeClient.on('connection-ignore', ({ uid, remotePublicKey, remoteAddress }) => {
+          logger.debug(`Scraper for ${alias}->${idEnc.normalize(remotePublicKey)} at ${remoteAddress} ignored connection (uid: ${uid})`)
         })
       }
     })
