@@ -13,7 +13,7 @@ function loadConfig () {
     prometheusTargetsLoc: process.env.DHT_PROM_PROMETHEUS_TARGETS_LOC || './prometheus/targets.json',
     logLevel: (process.env.DHT_PROM_LOG_LEVEL || 'info').toLowerCase(),
     httpPort: process.env.DHT_PROM_HTTP_PORT || 0,
-    httpHost: '127.0.0.1',
+    httpHost: process.env.DHT_PROM_HTTP_HOST || '127.0.0.1',
     _forceFlushOnClientReady: process.env._DHT_PROM_FORCE_FLUSH || 'false' // Tests only
   }
 

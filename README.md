@@ -1,10 +1,10 @@
 # DHT Prometheus
 
-A bridge to scrape Prometheus metrics from self-registering services, all using direct, end-to-end encrypted peer-to-peer connections.
+A bridge to scrape Prometheus metrics from self-registering services, all using direct, end-to-end encrypted peer-to-peer connections (not http).
 
-Its main advantage is that it does not use http: service discovery is done with a decentralised hash table ([HyperDHT](https://github.com/holepunchto/hyperdht)). This means that both this service and the clients it scrapes can live behind a firewall and need no reverse proy nor DNS entries.
+Service discovery is done with a decentralised hash table ([HyperDHT](https://github.com/holepunchto/hyperdht)). This means that both this service and the clients it scrapes can live behind a firewall and need no reverse proy nor DNS entries.
 
-Another advantage is the small amount of configuration required. [Clients](https://gitlab.com/dcent-tech/dht-prom-client) register themselves with the DHT-Prometheus service, so no manual list of targets needs to be maintained. All a client needs to register itself, is the DHT-Prometheus service's public key, and a shared secret.
+An advantage is the small amount of configuration required. [Clients](https://gitlab.com/dcent-tech/dht-prom-client) register themselves with the DHT-Prometheus service, so no manual list of targets needs to be maintained. All a client needs to register itself, is the DHT-Prometheus service's public key, and a shared secret.
 
 ## Deployment
 
@@ -16,6 +16,14 @@ The DHT-prometheus service fulfils two complementary roles:
 
 ### Run
 
+Configuration is done through environment variables:
+
+- `DHT_PROM_KEY_PAIR_SEED`: 32-byte seed passed to `HyperDHT.keyPair()`, set as hex or z32. Set this to have a consistent public key (otherwise random, which is only useful for tests).
+- `DHT_PROM_SHARED_SECRET`: 32-byte secret key, set as hex or z32.
+- `DHT_PROM_LOG_LEVEL`: defaults to info
+- `DHT_PROM_HTTP_PORT`: port where the http server listens. Defaults to a random port.
+- `DHT_PROM_HTTP_HOST`: host where the http server listens. Defaults to 127.0.0.1
+
 #### Docker
 
 ```
@@ -25,6 +33,8 @@ docker run --network host --env DHT_PROM_SHARED_SECRET=<A 64 character hex strin
 The intent is for the prometheus service to read its config from a read-only bind mount to `/etc/prometheus/config`, and for its config file to reference `./prometheus-dht-targets/targets.json`
 
 Note: `/etc/prometheus/config/prometheus-dht-targets` should be writable by the container's user.
+
+Note: `--network=host` is optional, but HyperDHT holepunching can struggle using the default bridge network, particularly for LAN and localhost connections.
 
 #### CLI
 
