@@ -120,16 +120,15 @@ test('No new alias if adding same key', async t => {
   await bridge.ready()
   bridge.putAlias('dummy', key)
   const clientA = bridge.aliases.get('dummy')
-  await clientA.ready() // Bit of a hack, but needed for lifecycle check
 
   t.is(clientA != null, true, 'sanity check')
   bridge.putAlias('dummy', key)
   t.is(clientA, bridge.aliases.get('dummy'), 'no new client')
 
-  t.is(clientA.closing == null, true, 'sanity check')
+  t.is(clientA.closed, false, 'sanity check')
   bridge.putAlias('dummy', key2)
   t.not(clientA, bridge.aliases.get('dummy'), 'sanity check')
-  t.is(clientA.closing != null, true, 'lifecycle ok')
+  t.is(clientA.closed, true, 'lifecycle ok')
 })
 
 test('A client which registers itself can get scraped', async t => {
@@ -178,16 +177,14 @@ test('A client gets removed and closed after it expires', async t => {
   bridge.putAlias('dummy', key)
 
   const entry = bridge.aliases.get('dummy')
-  await entry.ready() // ~Hack, to make it easy to check the lifecycle
 
-  t.is(entry.closing === null, true, 'sanity check')
   t.is(bridge.aliases.size, 1, 'sanity check')
 
   const [{ alias: expiredAlias }] = await once(bridge, 'alias-expired')
   t.is(expiredAlias, 'dummy', 'alias-expired event emitted')
 
   t.is(bridge.aliases.size, 0, 'alias removed when expired')
-  t.is(entry.closing !== null, true, 'The alias entry is closing (or closed)')
+  t.is(entry.closed, true, 'The alias entry is closed')
 
   await once(bridge, 'aliases-updated')
   t.pass('aliases file rewritten after an entry gets removed')
@@ -209,9 +206,8 @@ test('A client does not get removed if it renews before the expiry', async t => 
   }, bridge.entryExpiryMs / 2)
 
   const entry = bridge.aliases.get('dummy')
-  await entry.ready() // ~Hack, to make it easy to check the lifecycle
 
-  t.is(entry.closing === null, true, 'sanity check')
+  t.is(entry.closed, false, 'sanity check')
 
   t.is(bridge.aliases.size, 1, 'sanity check')
 
@@ -220,14 +216,14 @@ test('A client does not get removed if it renews before the expiry', async t => 
   ))
 
   t.is(bridge.aliases.size, 1, 'alias not removed if renewed in time')
-  t.is(entry.closing === null, true, 'Sanity check: entry not closed if renewed in time')
+  t.is(entry.closed, false, 'Sanity check: entry not closed if renewed in time')
 
   await new Promise(resolve => setTimeout(
     resolve, bridge.entryExpiryMs + 100
   ))
 
   t.is(bridge.aliases.size, 0, 'alias removed when expired')
-  t.is(entry.closing !== null, true, 'The alias entry is closing (or closed)')
+  t.is(entry.closed, true, 'The alias entry is closed')
 })
 
 async function setup (t, bridgeOpts = {}) {

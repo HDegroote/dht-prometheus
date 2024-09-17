@@ -93,11 +93,9 @@ class PrometheusDhtBridge extends ReadyResource {
       clearInterval(this._checkExpiredsInterval)
     }
 
-    await Promise.all([
-      [...this.aliases.values()].map(a => {
-        return a.close().catch(safetyCatch)
-      })]
-    )
+    for (const entry of this.aliases.values()) {
+      entry.close()
+    }
 
     await this.swarm.destroy()
 
@@ -117,7 +115,7 @@ class PrometheusDhtBridge extends ReadyResource {
         return updated
       }
 
-      current.close().catch(safetyCatch)
+      current.close()
     }
 
     const entry = new AliasesEntry(
@@ -149,10 +147,10 @@ class PrometheusDhtBridge extends ReadyResource {
       return
     }
 
-    if (!entry.opened) {
-      await entry.ready()
-      if (this._forceFlushOnClientReady) await entry.scrapeClient.swarm.flush()
+    if (this._forceFlushOnClientReady && !entry.hasHandledGet) {
+      await entry.scrapeClient.swarm.flush()
     }
+    entry.hasHandledGet = true
 
     const scrapeClient = entry.scrapeClient
 
@@ -210,7 +208,7 @@ class PrometheusDhtBridge extends ReadyResource {
     for (const alias of toRemove) {
       const entry = this.aliases.get(alias)
       this.aliases.delete(alias)
-      entry.close().catch(safetyCatch)
+      entry.close()
       this.emit('alias-expired', { publicKey: entry.targetKey, alias })
     }
 
@@ -269,14 +267,19 @@ class PrometheusDhtBridge extends ReadyResource {
   }
 }
 
-class AliasesEntry extends ReadyResource {
+class AliasesEntry {
   constructor (scrapeClient, hostname, service, expiry) {
-    super()
-
     this.scrapeClient = scrapeClient
     this.hostname = hostname
     this.service = service
     this.expiry = expiry
+    this.hasHandledGet = false
+
+    this.scrapeClient.ready()
+  }
+
+  get closed () {
+    return this.scrapeClient.closed
   }
 
   get targetKey () {
@@ -291,14 +294,8 @@ class AliasesEntry extends ReadyResource {
     this.expiry = expiry
   }
 
-  async _open () {
-    await this.scrapeClient.ready()
-  }
-
-  async _close () {
-    if (this.scrapeClient.opening) {
-      await this.scrapeClient.close()
-    }
+  close () {
+    this.scrapeClient.close()
   }
 }
 
