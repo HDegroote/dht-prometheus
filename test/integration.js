@@ -17,11 +17,8 @@ const axios = require('axios')
 const BRIDGE_EXECUTABLE = path.join(path.dirname(__dirname), 'run.js')
 const PROMETHEUS_EXECUTABLE = path.join(path.dirname(__dirname), 'prometheus', 'prometheus')
 
-const DEBUG = true
+const DEBUG = false
 const DEBUG_PROMETHEUS = false
-
-// Note: move this inside the test if we ever have >1 integration test
-promClient.collectDefaultMetrics() // So we have something to scrape
 
 // To force the process.on('exit') to be called on those exits too
 process.prependListener('SIGINT', () => process.exit(1))
@@ -33,6 +30,11 @@ test('Integration test, happy path', async t => {
   if (!fs.existsSync(PROMETHEUS_EXECUTABLE)) {
     throw new Error('the integration test requires a prometheus exec')
   }
+
+  promClient.collectDefaultMetrics() // So we have something to scrape
+  t.teardown(() => {
+    promClient.register.clear()
+  })
 
   const tBridgeSetup = t.test('Bridge setup')
   tBridgeSetup.plan(2)

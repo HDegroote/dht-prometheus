@@ -76,11 +76,10 @@ class PrometheusDhtBridge extends ReadyResource {
   }
 
   async _open () {
-    await this._loadAliases()
-
     // It is important that the aliases are first loaded
     // otherwise the old aliases might get overwritten
-    await this.aliasRpcServer.ready()
+    await this._loadAliases()
+    await this.swarm.listen()
 
     this._checkExpiredsInterval = setInterval(
       () => this.cleanupExpireds(),
@@ -94,13 +93,9 @@ class PrometheusDhtBridge extends ReadyResource {
       clearInterval(this._checkExpiredsInterval)
     }
 
-    await this.aliasRpcServer.close()
-
-    await Promise.all([
-      [...this.aliases.values()].map(a => {
-        return a.close().catch(safetyCatch)
-      })]
-    )
+    for (const entry of this.aliases.values()) {
+      entry.close()
+    }
 
     await this.swarm.destroy()
 
@@ -120,7 +115,7 @@ class PrometheusDhtBridge extends ReadyResource {
         return updated
       }
 
-      current.close().catch(safetyCatch)
+      current.close()
     }
 
     const entry = new AliasesEntry(
@@ -131,7 +126,6 @@ class PrometheusDhtBridge extends ReadyResource {
     )
 
     this.aliases.set(alias, entry)
-    // TODO: just emit entry?
     this.emit('set-alias', { alias, entry })
     const updated = true
 
@@ -140,25 +134,6 @@ class PrometheusDhtBridge extends ReadyResource {
     }
 
     return updated
-  }
-
-  // Should be kept sync (or think hard)
-  cleanupExpireds () {
-    const toRemove = []
-    for (const [alias, entry] of this.aliases) {
-      if (entry.isExpired) toRemove.push(alias)
-    }
-
-    for (const alias of toRemove) {
-      const entry = this.aliases.get(alias)
-      this.aliases.delete(alias)
-      entry.close().catch(safetyCatch)
-      this.emit('alias-expired', { publicKey: entry.targetKey, alias })
-    }
-
-    if (toRemove.length > 0) {
-      this._writeAliases().catch(safetyCatch)
-    }
   }
 
   async _handleGet (req, reply) {
@@ -172,16 +147,16 @@ class PrometheusDhtBridge extends ReadyResource {
       return
     }
 
-    if (!entry.opened) {
-      await entry.ready()
-      if (this._forceFlushOnClientReady) await entry.scrapeClient.swarm.flush()
+    if (this._forceFlushOnClientReady && !entry.hasHandledGet) {
+      await entry.scrapeClient.swarm.flush()
     }
+    entry.hasHandledGet = true
 
     const scrapeClient = entry.scrapeClient
 
     let res
     try {
-      res = await scrapeClient.lookup()
+      res = await scrapeClient.requestMetrics()
     } catch (e) {
       this.emit('upstream-error', e)
       reply.code(502)
@@ -217,19 +192,94 @@ class PrometheusDhtBridge extends ReadyResource {
         this.putAlias(alias, z32PubKey, hostname, service, { write: false })
       }
     } catch (e) {
+      // An error is expected if the file does not yet exist
+      // (typically first run only)
       this.emit('load-aliases-error', e)
     }
   }
+
+  // Should be kept sync (or think hard)
+  cleanupExpireds () {
+    const toRemove = []
+    for (const [alias, entry] of this.aliases) {
+      if (entry.isExpired) toRemove.push(alias)
+    }
+
+    for (const alias of toRemove) {
+      const entry = this.aliases.get(alias)
+      this.aliases.delete(alias)
+      entry.close()
+      this.emit('alias-expired', { publicKey: entry.targetKey, alias })
+    }
+
+    if (toRemove.length > 0) {
+      this._writeAliases().catch(safetyCatch)
+    }
+  }
+
+  registerLogger (logger) {
+    this.on('set-alias', ({ alias, entry }) => {
+      const scrapeClient = entry.scrapeClient
+      const publicKey = scrapeClient.targetKey
+      const { service, hostname } = entry
+
+      logger.info(`Registered alias: ${alias} -> ${idEnc.normalize(publicKey)} (${service} on host ${hostname})`)
+
+      scrapeClient.on('connection-open', ({ uid, remotePublicKey, remoteAddress }) => {
+        logger.info(`Scraper for ${alias}->${idEnc.normalize(remotePublicKey)} opened connection to ${remoteAddress} (uid: ${uid})`)
+      })
+      scrapeClient.on('connection-close', ({ uid, remotePublicKey, remoteAddress }) => {
+        logger.info(`Scraper for ${alias}->${idEnc.normalize(remotePublicKey)} closed connection to ${remoteAddress} (uid: ${uid})`)
+      })
+      scrapeClient.on('connection-error', ({ error, uid, remotePublicKey, remoteAddress }) => {
+        logger.info(`Scraper for ${alias}->${idEnc.normalize(remotePublicKey)} at ${remoteAddress} connection error (uid: ${uid}): ${error.stack}`)
+      })
+
+      if (logger.level === 'debug') {
+        scrapeClient.on('connection-ignore', ({ uid, remotePublicKey, remoteAddress }) => {
+          logger.debug(`Scraper for ${alias}->${idEnc.normalize(remotePublicKey)} at ${remoteAddress} ignored connection (uid: ${uid})`)
+        })
+      }
+    })
+
+    this.on('aliases-updated', (loc) => {
+      logger.info(`Updated the aliases file at ${loc}`)
+    })
+
+    this.on('alias-expired', ({ alias, publicKey }) => {
+      logger.info(`Alias entry expired: ${alias} -> ${idEnc.normalize(publicKey)}`)
+    })
+
+    this.on('load-aliases-error', e => {
+      // Expected first time the service starts (creates it then)
+      logger.error(`failed to load aliases file: ${e.stack}`)
+    })
+
+    this.on('upstream-error', e => {
+      logger.info(`upstream error: ${e.stack}`)
+    })
+
+    this.on('write-aliases-error', e => {
+      logger.error(`Failed to write aliases file ${e.stack}`)
+    })
+
+    this.aliasRpcServer.registerLogger(logger)
+  }
 }
 
-class AliasesEntry extends ReadyResource {
+class AliasesEntry {
   constructor (scrapeClient, hostname, service, expiry) {
-    super()
-
     this.scrapeClient = scrapeClient
     this.hostname = hostname
     this.service = service
     this.expiry = expiry
+    this.hasHandledGet = false
+
+    this.scrapeClient.ready()
+  }
+
+  get closed () {
+    return this.scrapeClient.closed
   }
 
   get targetKey () {
@@ -244,14 +294,8 @@ class AliasesEntry extends ReadyResource {
     this.expiry = expiry
   }
 
-  async _open () {
-    await this.scrapeClient.ready()
-  }
-
-  async _close () {
-    if (this.scrapeClient.opening) {
-      await this.scrapeClient.close()
-    }
+  close () {
+    this.scrapeClient.close()
   }
 }
 
